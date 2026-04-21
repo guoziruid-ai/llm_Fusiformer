@@ -102,18 +102,53 @@ def evaluate(data_loader, model, device, amp=True):
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = 'Test:'
 
-    # switch to evaluation mode
     model.eval()
 
-    for inputs, targets in metric_logger.log_every(data_loader, 10, header):
-        if isinstance(inputs, (list, tuple)):
-            inputs = [x.to(device, non_blocking=True) for x in inputs]
+    for batch in metric_logger.log_every(data_loader, 10, header):
+        if isinstance(batch, tuple) and len(batch) == 2:
+            batch_inputs, targets = batch
         else:
-            inputs = inputs.to(device, non_blocking=True)
-        if isinstance(targets, list):
-            targets = torch.cat(targets, -1).to(device, non_blocking=True)
+            batch_inputs, targets = batch, None
+        
+        # 关键修改：确保传递给模型的是字典格式
+        if isinstance(batch_inputs, dict):
+            # 已经是字典，直接使用
+            inputs = batch_inputs
+        elif isinstance(batch_inputs, list) and len(batch_inputs) == 2:
+            # 如果是 [graph, line_graph] 格式，包装成字典
+            inputs = {
+                'graph_input': batch_inputs,  # [graph, line_graph]
+                'text': None  # 如果没有文本，设为None
+            }
+        elif isinstance(batch_inputs, tuple) and len(batch_inputs) == 2:
+            # 如果是 (graph_data, text_data) 格式
+            inputs = {
+                'graph_input': batch_inputs[0] if isinstance(batch_inputs[0], list) else batch_inputs[0],
+                'text': batch_inputs[1] if len(batch_inputs) > 1 else None
+            }
         else:
-            targets = targets.to(device, non_blocking=True)
+            # 其他情况，尝试包装
+            inputs = {
+                'graph_input': batch_inputs,
+                'text': None
+            }
+        
+        # 将inputs中的所有张量移动到device
+        def to_device(data, device):
+            if isinstance(data, dict):
+                return {k: to_device(v, device) for k, v in data.items()}
+            elif isinstance(data, list):
+                return [to_device(x, device) for x in data]
+            elif isinstance(data, tuple):
+                return tuple(to_device(x, device) for x in data)
+            elif hasattr(data, 'to'):
+                return data.to(device, non_blocking=True)
+            else:
+                return data
+        
+        inputs = to_device(inputs, device)
+        targets = targets.to(device, non_blocking=True)
+
         # compute output
         if amp:
             with torch.cuda.amp.autocast():
@@ -130,7 +165,7 @@ def evaluate(data_loader, model, device, amp=True):
         metric_logger.update(loss=loss.item())
         metric_logger.meters['mae'].update(mae.item(), n=batch_size)
         metric_logger.meters['mse'].update(mse.item(), n=batch_size)
-    # gather the stats from all processes
+    
     metric_logger.synchronize_between_processes()
     print('* MAE {mae.global_avg:.3f} MSE {mse.global_avg:.3f} loss {losses.global_avg:.3f}'
           .format(mae=metric_logger.mae, mse=metric_logger.mse, losses=metric_logger.loss))

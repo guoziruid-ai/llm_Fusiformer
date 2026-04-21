@@ -1,4 +1,5 @@
 import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 import json
 import zipfile
 import requests
@@ -9,10 +10,8 @@ from torch.utils.data import Dataset
 from jarvis.core.atoms import Atoms
 from jarvis.core.graphs import nearest_neighbor_edges, build_undirected_edgedata
 import dgl
-from transformers import BertModel, BertTokenizer
-
+from transformers import AutoTokenizer
 from .utils import get_db_info
-BERT_PATH = 'my_bert_base_uncased'
 
 def split_train_val_test(
     total_size,
@@ -50,11 +49,14 @@ def get_dataset(
     n_train_val_test=None,
     transforms=None,
     graph=False, 
-    line_graph=False
+    line_graph=False,
+    qwen_model_name="Qwen/Qwen2.5-1.5B-Instruct",  # 改为 Qwen
+    text_max_length=512,
+    text_field='description'
 ):
     with open(data_path, 'r') as json_file:
         data = json.load(json_file)
-    print("Loading completed.")
+    print(f"Loading completed. Total samples: {len(data)}")
 
     train_idx, val_idx, test_idx = split_train_val_test(
                                         total_size=len(data),
@@ -62,7 +64,7 @@ def get_dataset(
                                         n_train_val_test=n_train_val_test)
     train_data = [data[idx] for idx in train_idx]
     val_data = [data[idx] for idx in val_idx] if val_idx else None
-    test_data = [data[idx] for idx in test_idx] if val_idx else None
+    test_data = [data[idx] for idx in test_idx] if test_idx else None
 
     if isinstance(transforms, list): 
         assert len(transforms) <= 3 
@@ -76,10 +78,39 @@ def get_dataset(
     else:
         train_transform = val_transform = test_transform = transforms
 
+    qwen_tokenizer = AutoTokenizer.from_pretrained(
+        qwen_model_name,
+        trust_remote_code=True  # Qwen 需要这个参数
+    )
+    
+    if qwen_tokenizer.pad_token is None:
+        qwen_tokenizer.pad_token = qwen_tokenizer.eos_token
+
     if graph:
-        train_dataset = CrystalGraphDataset(data=train_data, transforms=train_transform, line_graph=line_graph, text_tokenizer=BertTokenizer.from_pretrained(BERT_PATH))
-        val_dataset = CrystalGraphDataset(data=val_data, transforms=val_transform, line_graph=line_graph, text_tokenizer=BertTokenizer.from_pretrained(BERT_PATH)) if val_data else None
-        test_dataset = CrystalGraphDataset(data=test_data, transforms=test_transform, line_graph=line_graph, text_tokenizer=BertTokenizer.from_pretrained(BERT_PATH)) if test_data else None
+        train_dataset = CrystalGraphDataset(
+            data=train_data, 
+            transforms=train_transform, 
+            line_graph=line_graph, 
+            text_tokenizer=qwen_tokenizer,
+            text_max_length=text_max_length,
+            text_field=text_field
+        )
+        val_dataset = CrystalGraphDataset(
+            data=val_data, 
+            transforms=val_transform, 
+            line_graph=line_graph, 
+            text_tokenizer=qwen_tokenizer,
+            text_max_length=text_max_length,
+            text_field=text_field
+        ) if val_data else None
+        test_dataset = CrystalGraphDataset(
+            data=test_data, 
+            transforms=test_transform, 
+            line_graph=line_graph, 
+            text_tokenizer=qwen_tokenizer,
+            text_max_length=text_max_length,
+            text_field=text_field
+        ) if test_data else None
     else:
         train_dataset = CrystalDataset(data=train_data, transforms=train_transform)
         val_dataset = CrystalDataset(data=val_data, transforms=val_transform) if val_data else None
@@ -120,9 +151,10 @@ class CrystalGraphDataset(Dataset):
                 max_length=self.text_max_length,
                 return_tensors='pt'
             )
+            
             crystal['text'] = tokens
+            
         inputs, targets = self.transforms(crystal)
-        print(type(inputs))
         return inputs, targets
 
     def __len__(self):
@@ -146,24 +178,40 @@ class CrystalGraphDataset(Dataset):
 
     def collect(self):
         def collect_line_graph(samples):
-            inputs, targets = map(list, zip(*samples))
-            graphs = [item['graph_input'] for item in inputs]
-
+            inputs_list, targets_list = map(list, zip(*samples))
+            
+            graphs = [item['graph_input'] for item in inputs_list]
             batched_graph = dgl.batch([g[0] for g in graphs])
             batched_line_graph = dgl.batch([g[1] for g in graphs])
-
-            text_embs = [item.get('text_emb', None) for item in inputs]
-            if all(emb is not None for emb in text_embs):
-                batched_text_emb = torch.stack(text_embs)
+            
+            text_data = [item.get('text', None) for item in inputs_list]
+            
+            if all(text is not None for text in text_data):
+                batched_text = {
+                    'input_ids': torch.cat([t['input_ids'] for t in text_data], dim=0),
+                    'attention_mask': torch.cat([t['attention_mask'] for t in text_data], dim=0)
+                }
             else:
-                batched_text_emb = None
-
+                batched_text = None
+            
             batched_inputs = {
-            'graph_input': [batched_graph, batched_line_graph]
+                'graph_input': [batched_graph, batched_line_graph],
+                'text': batched_text
             }
-            if batched_text_emb is not None:
-                batched_inputs['text_emb'] = batched_text_emb
-        
-            return batched_inputs, torch.stack(targets)
-
+            return batched_inputs, torch.stack(targets_list)
         return collect_line_graph
+
+
+class CrystalDataset(Dataset):
+    def __init__(self, data, transforms):
+        self.data = data
+        self.transforms = transforms
+    
+    def __getitem__(self, index):
+        info = self.data[index]
+        crystal = {'info': info}
+        inputs, targets = self.transforms(crystal)
+        return inputs, targets
+    
+    def __len__(self):
+        return len(self.data)

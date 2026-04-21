@@ -15,7 +15,7 @@ import tools.misc as misc
 from tools.misc import NativeScalerWithGradNormCount as NativeScaler
 
 # from models.alignn import ALIGNN
-from models.crysformer import Crysformer
+from models.TextGuidedFusiformer import TextGuidedFusiformer
 from loader.loader import get_dataset
 from loader.transforms import *
 
@@ -202,8 +202,7 @@ def main(args):
         collate_fn=test_dataset.collect(),
     )
 
-    # model = ALIGNN()
-    model = Crysformer(targets=args.targets)
+    model = TextGuidedFusiformer(targets=args.targets)
 
     if args.pretrain and not args.eval:
         checkpoint = torch.load(args.pretrain, map_location='cpu')
