@@ -1,1 +1,4 @@
 data/my_dataset.json
+output/
+log/
+__pycache__/
