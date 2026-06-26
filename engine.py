@@ -8,6 +8,18 @@ import torch
 
 from tools import misc, lr_sched
 
+def to_device(data, device):
+    if isinstance(data, dict):
+        return {k: to_device(v, device) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [to_device(x, device) for x in data]
+    elif isinstance(data, tuple):
+        return tuple(to_device(x, device) for x in data)
+    elif hasattr(data, "to"):
+        return data.to(device, non_blocking=True)
+    else:
+        return data
+
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
@@ -28,21 +40,13 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
 
         lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
 
-        if isinstance(inputs, dict):
-            for key, value in inputs.items():
-                if isinstance(value, (list, tuple)):
-                    inputs[key] = [x.to(device, non_blocking=True) for x in value]
-                elif hasattr(value, 'to'):
-                    inputs[key] = value.to(device, non_blocking=True)
-        elif isinstance(inputs, (list, tuple)):
-            inputs = [x.to(device, non_blocking=True) for x in inputs]
-        else:
-            inputs = inputs.to(device, non_blocking=True)
+        inputs = to_device(inputs, device)
 
         if isinstance(targets, list):
             targets = torch.cat(targets, -1).to(device, non_blocking=True)
         else:
             targets = targets.to(device, non_blocking=True)
+
 
         if amp:
             with torch.cuda.amp.autocast():
@@ -191,10 +195,7 @@ def test_evaluate(data_loader, model, device, amp=False, save_path="test_mae_new
         sample_index = 0
 
         for inputs, targets in metric_logger.log_every(data_loader, 1, header):
-            if isinstance(inputs, (list, tuple)):
-                inputs = [x.to(device, non_blocking=True) for x in inputs]
-            else:
-                inputs = inputs.to(device, non_blocking=True)
+            inputs = to_device(inputs, device)
             if isinstance(targets, list):
                 targets = torch.cat(targets, -1).to(device, non_blocking=True)
             else:

@@ -3,6 +3,7 @@ from robocrys.condense.condenser import StructureCondenser
 from robocrys import StructureDescriber
 import json
 
+#G 硬编码（建议修改）
 API_KEY = "iRQn8R8avlT2r0wyKviRYKHny9ztTVtp"
 mpr = MPRester(API_KEY)
 

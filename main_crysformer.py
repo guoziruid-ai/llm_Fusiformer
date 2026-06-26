@@ -110,6 +110,7 @@ def get_args_parser():
 
 
 def main(args):
+    #G 判断是否启用分布式训练
     misc.init_distributed_mode(args)
 
     print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
@@ -124,6 +125,7 @@ def main(args):
 
     cudnn.benchmark = True
 
+    # 构建数据transform
     if 'line_graph' in args.inputs:
         transform = Compose([
             AddNodeFeature(),
@@ -140,6 +142,7 @@ def main(args):
     train_dataset, val_dataset, test_dataset = \
         get_dataset(args.data_path, args.ratio_train_val_test, args.n_train_val_test, transform, True, line_graph='line_graph' in args.inputs)
 
+    global_rank = misc.get_rank()   #G 修改bug,提前定义global_rank
     if args.distributed:
         num_tasks = misc.get_world_size()
         global_rank = misc.get_rank()
@@ -177,6 +180,7 @@ def main(args):
         with open(os.path.join(args.output_dir, logfile), mode="a", encoding="utf-8") as f:
             f.write(json.dumps(vars(args)) + "\n")
 
+    #G 构建Dataloader
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, sampler=train_sampler,
         batch_size=args.batch_size,
@@ -202,6 +206,7 @@ def main(args):
         collate_fn=test_dataset.collect(),
     )
 
+    #G 创建模型
     model = TextGuidedFusiformer(targets=args.targets)
 
     if args.pretrain and not args.eval:
@@ -255,10 +260,10 @@ def main(args):
 
     misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
 
-    if args.eval:
-        test_stats = evaluate(val_dataloader, model, device)
-        print(f"MAE of the network on the {len(val_dataset)} test crystals: {test_stats['mae']:.3f}")
-        print(f"MSE of the network on the {len(val_dataset)} test crystals: {test_stats['mse']:.3f}")
+    if args.eval:   #G(!) 应该传入test_dataloader,而不是val_dataloader
+        test_stats = evaluate(test_dataloader, model, device)
+        print(f"MAE of the network on the {len(test_dataset)} test crystals: {test_stats['mae']:.3f}")
+        print(f"MSE of the network on the {len(test_dataset)} test crystals: {test_stats['mse']:.3f}")
         exit(0)
 
     print(f"Start training for {args.epochs} epochs")
@@ -280,12 +285,14 @@ def main(args):
                 args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
                 loss_scaler=loss_scaler, epoch=epoch)
 
+        #G 每个epoch后验证
         val_stats = evaluate(val_dataloader, model, device, amp=False)
         print(f"MAE of the network on the {len(val_dataset)} validation crystals: {val_stats['mae']:.3f}")
         print(f"MSE of the network on the {len(val_dataset)} validation crystals: {val_stats['mse']:.3f}")
         min_mae = min(min_mae, val_stats["mae"])
         print(f'Min MAE: {min_mae:.3f}')
 
+        #G 写TensorBoard和文本日志
         if log_writer is not None:
             log_writer.add_scalar('perf/val_mae', val_stats['mae'], epoch)
             log_writer.add_scalar('perf/val_mse', val_stats['mse'], epoch)
