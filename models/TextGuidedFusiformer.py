@@ -256,7 +256,7 @@ class TextGuidedFusiformer(nn.Module):
                  depth=4, edge_input_dim=80, triplet_input_dim=40,
                  embed_dim=128, num_heads=4, mlp_ratio=2.,
                  use_bias=True, norm_layer=None, act_layer=None,
-                 text_dim=3584, qwen_model_name="Qwen/Qwen2.5-1.5B-Instruct",  # Qwen2.5-7B 隐藏层维度为 3584
+                 text_dim=1536, qwen_model_name="/root/models/Qwen2.5-1.5B-Instruct",
                  freeze_qwen=True):
         """
         text_dim: Qwen 的隐藏层维度 
@@ -303,14 +303,18 @@ class TextGuidedFusiformer(nn.Module):
         # 加载预训练的 Qwen 模型
         self.qwen = AutoModel.from_pretrained(
             qwen_model_name,
-            trust_remote_code=True,  # Qwen 需要这个参数
-            output_hidden_states=True
+            trust_remote_code=True,
+            output_hidden_states=True,
+            local_files_only=True
         )
-        
+
+        self.freeze_qwen = freeze_qwen
         if freeze_qwen:
             for param in self.qwen.parameters():
                 param.requires_grad = False
-        self.qwen.eval()  # 设置为评估模式
+            self.qwen.eval()
+        else:
+            self.qwen.train()
         
         # 文本引导的 Fusiformer blocks
         self.blocks = nn.ModuleList([
@@ -342,23 +346,23 @@ class TextGuidedFusiformer(nn.Module):
         使用 Qwen 编码文本
         text_tokens: 来自 tokenizer 的输入，包含 'input_ids' 和 'attention_mask'
         """
-        with torch.set_grad_enabled(not self.qwen.training):
+        ctx = torch.no_grad() if self.freeze_qwen else torch.enable_grad()
+
+        with ctx:
             outputs = self.qwen(
                 input_ids=text_tokens['input_ids'],
                 attention_mask=text_tokens.get('attention_mask', None),
                 output_hidden_states=True
             )
-            # 使用平均池化获取句子表示
+
             attention_mask = text_tokens.get('attention_mask', None)
             if attention_mask is not None:
-                # 考虑mask的平均池化
                 hidden_states = outputs.last_hidden_state
                 mask_expanded = attention_mask.unsqueeze(-1).expand(hidden_states.size()).float()
-                text_emb = (hidden_states * mask_expanded).sum(dim=1) / mask_expanded.sum(dim=1)
+                text_emb = (hidden_states * mask_expanded).sum(dim=1) / mask_expanded.sum(dim=1).clamp(min=1e-6)
             else:
                 text_emb = outputs.last_hidden_state.mean(dim=1)
-        
-        # 投影到晶体特征空间
+
         text_emb = self.text_proj(text_emb)
         return text_emb
 
@@ -407,3 +411,11 @@ class TextGuidedFusiformer(nn.Module):
         pred = self.regression_head(graph_out)
         
         return pred
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+
+        if getattr(self, "freeze_qwen", False) and self.qwen is not None:
+            self.qwen.eval()
+
+        return self
