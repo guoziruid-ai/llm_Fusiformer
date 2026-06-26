@@ -50,7 +50,7 @@ def get_dataset(
     transforms=None,
     graph=False, 
     line_graph=False,
-    qwen_model_name="Qwen/Qwen2.5-1.5B-Instruct",  # 改为 Qwen
+    qwen_model_name="/root/models/Qwen2.5-1.5B-Instruct",
     text_max_length=512,
     text_field='description'
 ):
@@ -80,7 +80,8 @@ def get_dataset(
 
     qwen_tokenizer = AutoTokenizer.from_pretrained(
         qwen_model_name,
-        trust_remote_code=True  # Qwen 需要这个参数
+        trust_remote_code=True,
+        local_files_only=True
     )
     
     if qwen_tokenizer.pad_token is None:
@@ -153,7 +154,7 @@ class CrystalGraphDataset(Dataset):
             )
             
             crystal['text'] = tokens
-            
+
         inputs, targets = self.transforms(crystal)
         return inputs, targets
 
@@ -215,3 +216,4 @@ class CrystalDataset(Dataset):
     
     def __len__(self):
         return len(self.data)
+

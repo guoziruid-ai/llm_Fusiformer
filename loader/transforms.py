@@ -4,10 +4,7 @@ import numpy as np
 from scipy.spatial.transform import Rotation as R
 import torch
 from .utils import compute_angle
-from transformers import AutoModel, AutoTokenizer
 
-
-QWEN_MODEL_NAME = "Qwen/Qwen2.5-1.5B-Instruct" 
 
 ## Contrastive Transforms ##
 class ContrastiveTransform(object):
@@ -133,62 +130,19 @@ class StructureCollecting(object):
 
 ## Graph Transforms ##
 class AddNodeFeature(object):
-    def __init__(self, features=['atomic_numbers'], use_qwen=True, qwen_model_name=QWEN_MODEL_NAME, freeze_qwen=True):
+    def __init__(self, features=['atomic_numbers']):
         self.features = features
-        self.use_qwen = use_qwen
-        self.qwen_model_name = qwen_model_name
-        
-        # 加载 Qwen 模型
-        if use_qwen:
-            # 设置环境变量使用国内镜像（如果网络有问题）
-            os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-            
-            # Qwen 使用 AutoModel 加载
-            self.qwen_model = AutoModel.from_pretrained(
-                qwen_model_name,
-                trust_remote_code=True  # Qwen 需要 trust_remote_code
-            )
-            if freeze_qwen:
-                for param in self.qwen_model.parameters():
-                    param.requires_grad = False
-            self.qwen_model.eval()  # 设置为评估模式
-        else:
-            self.qwen_model = None
 
     def __call__(self, crystal):
         structure = crystal['structure']
+
         for feat in self.features:
             assert hasattr(structure, feat)
-            crystal['graph'].ndata[feat] = torch.tensor(getattr(structure, feat), dtype=torch.long)
-        
-        # 处理文本特征 - 使用 Qwen
-        if "text" in crystal and self.use_qwen and self.qwen_model is not None:
-            text_inputs = crystal["text"]
-            
-            # 确保输入在正确的设备上
-            device = next(self.qwen_model.parameters()).device
-            text_inputs = {k: v.to(device) for k, v in text_inputs.items()}
-            
-            with torch.no_grad():
-                # 使用 Qwen 编码文本
-                outputs = self.qwen_model(
-                    input_ids=text_inputs['input_ids'],
-                    attention_mask=text_inputs.get('attention_mask', None),
-                    output_hidden_states=True
-                )
-                
-                # 使用 attention mask 进行加权平均池化
-                attention_mask = text_inputs.get('attention_mask', None)
-                if attention_mask is not None:
-                    hidden_states = outputs.last_hidden_state
-                    mask_expanded = attention_mask.unsqueeze(-1).expand(hidden_states.size()).float()
-                    text_embedding = (hidden_states * mask_expanded).sum(dim=1) / mask_expanded.sum(dim=1)
-                else:
-                    text_embedding = outputs.last_hidden_state.mean(dim=1)
-            
-            # 移回 CPU 以便后续处理
-            crystal['text_emb'] = text_embedding.cpu()
-        
+            crystal['graph'].ndata[feat] = torch.tensor(
+                getattr(structure, feat),
+                dtype=torch.long
+            )
+
         return crystal
 
 
@@ -228,10 +182,14 @@ class GraphCollecting(object):
             inputs_graph = [crystal['graph']]
         else:
             raise ValueError('Invalid inputs!')
-        inputs = {'graph_input': inputs_graph}
 
-        if 'text_emb' in crystal:
-            inputs['text_emb'] = crystal['text_emb']
+        inputs = {
+            'graph_input': inputs_graph
+        }
+
+        # 关键修改：保留 tokenizer 结果，传给模型内部的 Qwen
+        if 'text' in crystal:
+            inputs['text'] = crystal['text']
 
         targets = []
         for i in self.targets:
@@ -240,8 +198,18 @@ class GraphCollecting(object):
             else:
                 assert i in crystal['info']
                 targets.append(torch.tensor([crystal['info'][i]], dtype=torch.float32))
-        return inputs, torch.cat(targets)
+        # debug
+        print("\n[DEBUG GraphCollecting]")
+        print("crystal has text:", "text" in crystal)
+        print("crystal has text_emb:", "text_emb" in crystal)
+        print("output input keys:", inputs.keys())
 
+        if "text" in inputs:
+            print("output text keys:", inputs["text"].keys())
+            print("output input_ids shape:", inputs["text"]["input_ids"].shape)
+        # debug#
+
+        return inputs, torch.cat(targets)
 
 ## Compose
 class Compose(object):
