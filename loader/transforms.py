@@ -198,7 +198,7 @@ class GraphCollecting(object):
             else:
                 assert i in crystal['info']
                 targets.append(torch.tensor([crystal['info'][i]], dtype=torch.float32))
-        # debug
+        '''# debug
         print("\n[DEBUG GraphCollecting]")
         print("crystal has text:", "text" in crystal)
         print("crystal has text_emb:", "text_emb" in crystal)
@@ -207,7 +207,7 @@ class GraphCollecting(object):
         if "text" in inputs:
             print("output text keys:", inputs["text"].keys())
             print("output input_ids shape:", inputs["text"]["input_ids"].shape)
-        # debug#
+        # debug#'''
 
         return inputs, torch.cat(targets)
 

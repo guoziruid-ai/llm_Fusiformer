@@ -181,38 +181,70 @@ class TextGuidedFusiformerLayer(nn.Module):
         self.norm_mlp_h = norm_layer(dim)
         self.norm_mlp_e = norm_layer(dim)
 
-    def forward(self, g, h, e, text_emb, batch_num_nodes=None, batch_num_edges=None):
+    def forward(
+            self,
+            g,
+            h,
+            e,
+            text_emb,
+            batch_num_nodes,
+            batch_num_edges,
+            enable_text_guidance=True,
+    ):
         """
-        g: graph
-        h: node features
-        e: edge features
-        text_emb: text features [B, text_dim]
-        batch_num_nodes: 每个batch的节点数量
-        batch_num_edges: 每个batch的边数量
+        Parameters
+        ----------
+        enable_text_guidance:
+            True:
+                正常执行文本交叉注意力。
+
+            False:
+                完全跳过文本交叉注意力，只执行图结构相关模块。
+                这是严格意义上的 graph-only 路径。
         """
-        g = g.local_var()
-        
-        # 1. Text-CrossAttention for nodes
-        text_guided_h = self.text_cross_attn_node(h, text_emb, batch_num_nodes)
-        h = self.norm_text_node(h + text_guided_h)
-        
-        # 2. Text-CrossAttention for edges
-        text_guided_e = self.text_cross_attn_edge(e, text_emb, batch_num_edges)
-        e = self.norm_text_edge(e + text_guided_e)
-        
-        # 3. Graph-CrossAttention: 节点到边的信息聚合
+
+        # ---------------------------------------------------------
+        # 1. 文本交叉注意力
+        # ---------------------------------------------------------
+        if enable_text_guidance:
+            text_guided_h = self.text_cross_attn_node(
+                h,
+                text_emb,
+                batch_num_nodes,
+            )
+            h = self.norm_text_node(h + text_guided_h)
+
+            text_guided_e = self.text_cross_attn_edge(
+                e,
+                text_emb,
+                batch_num_edges,
+            )
+            e = self.norm_text_edge(e + text_guided_e)
+
+        # ---------------------------------------------------------
+        # 2. 图结构交叉注意力
+        # ---------------------------------------------------------
         h_graph = self.graph_cross_attn(g, h, e)
         h = self.norm_graph(h + h_graph)
-        
-        # 4. ConditionalAttention: 边特征更新
-        h_, e_, score = self.graph_cond_attention(g, h, e)
-        h = self.norm_cond_h(h + h_)
-        e = self.norm_cond_e(e + e_)
-        
-        # 5. MLP updates
+
+        # ---------------------------------------------------------
+        # 3. 图条件注意力
+        # ---------------------------------------------------------
+        h_update, e_update, score = self.graph_cond_attention(
+            g,
+            h,
+            e,
+        )
+
+        h = self.norm_cond_h(h + h_update)
+        e = self.norm_cond_e(e + e_update)
+
+        # ---------------------------------------------------------
+        # 4. MLP 更新
+        # ---------------------------------------------------------
         h = self.norm_mlp_h(h + self.mlp_h(h))
         e = self.norm_mlp_e(e + self.mlp_e(e))
-        
+
         return h, e, score
 
 
@@ -231,23 +263,50 @@ class TextGuidedFusiformerBlock(nn.Module):
             drop, act_layer, norm_layer
         )
 
-    def forward(self, g, x, y, lg, z, text_emb, 
-                batch_num_nodes_g, batch_num_edges_g,
-                batch_num_nodes_lg, batch_num_edges_lg):
+    def forward(
+            self,
+            g,
+            x,
+            y,
+            lg,
+            z,
+            text_emb,
+            batch_num_nodes_g,
+            batch_num_edges_g,
+            batch_num_nodes_lg,
+            batch_num_edges_lg,
+            enable_text_guidance=True,
+    ):
         """
-        x: node features
-        y: edge features (also lg node features)
-        z: angle features (lg edge features)
-        text_emb: text features
+        enable_text_guidance=True:
+            使用文本引导。
+
+        enable_text_guidance=False:
+            主图和线图都跳过文本交叉注意力。
         """
+
         # 先更新线图
-        y, z, score_lg = self.lg_update(lg, y, z, text_emb, 
-                                        batch_num_nodes_lg, batch_num_edges_lg)
-        
+        y, z, score_lg = self.lg_update(
+            lg,
+            y,
+            z,
+            text_emb,
+            batch_num_nodes_lg,
+            batch_num_edges_lg,
+            enable_text_guidance=enable_text_guidance,
+        )
+
         # 再更新主图
-        x, y, score_g = self.g_update(g, x, y, text_emb,
-                                      batch_num_nodes_g, batch_num_edges_g)
-        
+        x, y, score_g = self.g_update(
+            g,
+            x,
+            y,
+            text_emb,
+            batch_num_nodes_g,
+            batch_num_edges_g,
+            enable_text_guidance=enable_text_guidance,
+        )
+
         return x, y, z
 
 
@@ -368,48 +427,127 @@ class TextGuidedFusiformer(nn.Module):
 
     def forward(self, inputs):
         """
-        inputs: 包含 'graph_input' 和 'text' 的字典
+        inputs 必须包含：
+            graph_input
+
+        inputs 可以包含：
+            text
+            text_mode
+
+        text_mode:
+            "normal":
+                正常文本模式，也是默认模式。
+
+            "bypass":
+                完全跳过文本编码和文本交叉注意力。
         """
-        # 获取图输入
-        graph = inputs.get('graph_input')
-        assert len(graph) == 2
+
+        # ---------------------------------------------------------
+        # 1. 获取图输入
+        # ---------------------------------------------------------
+        graph = inputs.get("graph_input")
+
+        if graph is None:
+            raise KeyError("inputs 中缺少 'graph_input'")
+
+        if len(graph) != 2:
+            raise ValueError(
+                "graph_input 应包含 graph 和 line_graph 两个对象"
+            )
+
         g, lg = graph
         g = g.local_var()
         lg = lg.local_var()
-        
-        # 获取batch信息
+
+        # ---------------------------------------------------------
+        # 2. 读取文本实验模式
+        # ---------------------------------------------------------
+        text_mode = str(
+            inputs.get("text_mode", "normal")
+        ).strip().lower()
+
+        valid_text_modes = {
+            "normal",
+            "bypass",
+        }
+
+        if text_mode not in valid_text_modes:
+            raise ValueError(
+                f"不支持的 text_mode={text_mode!r}，"
+                f"可选值为 {sorted(valid_text_modes)}"
+            )
+
+        enable_text_guidance = text_mode == "normal"
+
+        # ---------------------------------------------------------
+        # 3. 获取 batch 信息
+        # ---------------------------------------------------------
         batch_num_nodes_g = g.batch_num_nodes()
         batch_num_edges_g = g.batch_num_edges()
         batch_num_nodes_lg = lg.batch_num_nodes()
         batch_num_edges_lg = lg.batch_num_edges()
-        
-        # 编码文本
-        text_tokens = inputs.get('text')
-        if text_tokens is not None:
-            text_emb = self.encode_text(text_tokens)  # [B, embed_dim]
+
+        # ---------------------------------------------------------
+        # 4. 编码文本
+        # ---------------------------------------------------------
+        if enable_text_guidance:
+            text_tokens = inputs.get("text")
+
+            if text_tokens is not None:
+                text_emb = self.encode_text(text_tokens)
+            else:
+                # 保留你原来的兼容逻辑：
+                # normal 模式但没有文本时，使用零向量。
+                batch_size = len(batch_num_nodes_g)
+
+                text_emb = torch.zeros(
+                    batch_size,
+                    self.text_proj[0].out_features,
+                    device=g.device,
+                )
         else:
-            # 如果没有文本，使用零向量
-            device = g.device
-            batch_size = len(batch_num_nodes_g)
-            text_emb = torch.zeros(batch_size, self.text_proj[0].out_features).to(device)
-        
-        # 构建初始特征
-        z = self.angle_embedding(lg.edata.pop("angle"))
-        x = self.atom_embedding(g.ndata.pop("atomic_numbers") - 1)
-        y = self.edge_embedding(g.edata.pop('distance'))
-        
-        # 通过文本引导的 blocks
+            # bypass 模式下不运行 Qwen 和 text_proj。
+            text_emb = None
+
+        # ---------------------------------------------------------
+        # 5. 构建初始图特征
+        # ---------------------------------------------------------
+        z = self.angle_embedding(
+            lg.edata.pop("angle")
+        )
+
+        x = self.atom_embedding(
+            g.ndata.pop("atomic_numbers") - 1
+        )
+
+        y = self.edge_embedding(
+            g.edata.pop("distance")
+        )
+
+        # ---------------------------------------------------------
+        # 6. 通过 Fusiformer blocks
+        # ---------------------------------------------------------
         for block in self.blocks:
-            x, y, z = block(g, x, y, lg, z, text_emb,
-                          batch_num_nodes_g, batch_num_edges_g,
-                          batch_num_nodes_lg, batch_num_edges_lg)
-        
-        # 全局池化
-        graph_out = self.readout(g, x)  # [B, embed_dim]
-        
-        # 回归预测
+            x, y, z = block(
+                g,
+                x,
+                y,
+                lg,
+                z,
+                text_emb,
+                batch_num_nodes_g,
+                batch_num_edges_g,
+                batch_num_nodes_lg,
+                batch_num_edges_lg,
+                enable_text_guidance=enable_text_guidance,
+            )
+
+        # ---------------------------------------------------------
+        # 7. 图池化与预测
+        # ---------------------------------------------------------
+        graph_out = self.readout(g, x)
         pred = self.regression_head(graph_out)
-        
+
         return pred
 
     def train(self, mode: bool = True):
