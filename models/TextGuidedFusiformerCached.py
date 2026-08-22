@@ -1,40 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Cache-aware TextGuidedFusiformer.
+"""Cache-aware, encoder-agnostic TextGuidedFusiformer.
 
-The graph architecture is reused from models/TextGuidedFusiformer.py.
-Only the text path is changed:
+Online path:
+    tokens -> arbitrary Hugging Face text encoder -> pooling -> text_proj
 
-online:
-    tokens -> frozen Qwen -> masked mean pool -> text_proj
+Cached path:
+    precomputed pooled [B, D_text] -> text_proj
 
-cached:
-    cached pooled Qwen embedding -> text_proj
-
-The trainable text_proj and all downstream cross-attention layers remain
-unchanged, so the cache does NOT freeze text_proj.
+The graph/fusion architecture is intentionally unchanged.  Legacy Qwen
+constructor names remain accepted so older training utilities do not break.
 """
 
 from __future__ import annotations
 
-import os
-from contextlib import nullcontext
 from functools import partial
 
 import torch
 from dgl.nn import AvgPooling
 from torch import nn
-from transformers import AutoModel
 
 from .TextGuidedFusiformer import TextGuidedFusiformerBlock
 from .layers import RBFExpansion
+from .text_encoders import build_text_encoder
 
 
 class TextGuidedFusiformer(nn.Module):
     def __init__(
         self,
-        targets=[],
+        targets=None,
         depth=4,
         edge_input_dim=80,
         triplet_input_dim=40,
@@ -45,36 +39,57 @@ class TextGuidedFusiformer(nn.Module):
         norm_layer=None,
         act_layer=None,
         text_dim=1536,
-        qwen_model_name="/root/models/Qwen2.5-1.5B-Instruct",
-        freeze_qwen=True,
-        load_qwen=True,
+        # New generic API
+        text_encoder_name="auto",
+        text_model_name=None,
+        text_pooling="mean",
+        text_preprocessing="auto",
+        freeze_text_encoder=True,
+        load_text_encoder=True,
+        allow_remote_model=False,
+        # Legacy compatibility API
+        qwen_model_name=None,
+        freeze_qwen=None,
+        load_qwen=None,
     ):
         super().__init__()
+        targets = [] if targets is None else targets
 
-        if not load_qwen and not freeze_qwen:
+        if text_model_name is None:
+            text_model_name = qwen_model_name
+        if text_model_name is None:
+            text_model_name = "/root/models/Qwen2.5-1.5B-Instruct"
+        if freeze_qwen is not None:
+            freeze_text_encoder = bool(freeze_qwen)
+        if load_qwen is not None:
+            load_text_encoder = bool(load_qwen)
+
+        if not load_text_encoder and not freeze_text_encoder:
             raise ValueError(
-                "load_qwen=False is only valid when freeze_qwen=True. "
-                "Trainable Qwen cannot use a static embedding cache."
+                "load_text_encoder=False is only valid when freeze_text_encoder=True. "
+                "A trainable text encoder cannot use a static embedding cache."
             )
 
         self.targets = targets
-        self.freeze_qwen = bool(freeze_qwen)
-        self.load_qwen = bool(load_qwen)
-        self.qwen_model_name = qwen_model_name
         self.text_dim = int(text_dim)
+        self.text_encoder_name = str(text_encoder_name)
+        self.text_model_name = str(text_model_name)
+        self.text_pooling = str(text_pooling)
+        self.text_preprocessing = str(text_preprocessing)
+        self.freeze_text_encoder = bool(freeze_text_encoder)
+        self.load_text_encoder = bool(load_text_encoder)
+        self.allow_remote_model = bool(allow_remote_model)
 
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         act_layer = act_layer or nn.ReLU
 
         self.atom_embedding = nn.Embedding(95, embed_dim)
-
         self.edge_embedding = nn.Sequential(
             RBFExpansion(vmin=0, vmax=8.0, bins=edge_input_dim),
             nn.Linear(edge_input_dim, embed_dim),
             norm_layer(embed_dim),
             act_layer(),
         )
-
         self.angle_embedding = nn.Sequential(
             RBFExpansion(vmin=-1, vmax=1.0, bins=triplet_input_dim),
             nn.Linear(triplet_input_dim, embed_dim),
@@ -82,29 +97,32 @@ class TextGuidedFusiformer(nn.Module):
             act_layer(),
         )
 
-        # This remains trainable in cache mode.
+        # Always trainable in cache mode.
         self.text_proj = nn.Sequential(
-            nn.Linear(text_dim, embed_dim),
+            nn.Linear(self.text_dim, embed_dim),
             norm_layer(embed_dim),
             act_layer(),
         )
 
-        self.qwen = None
-        if self.load_qwen:
-            os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-            self.qwen = AutoModel.from_pretrained(
-                qwen_model_name,
-                trust_remote_code=True,
-                output_hidden_states=False,
-                local_files_only=True,
+        self.text_encoder = None
+        if self.load_text_encoder:
+            self.text_encoder = build_text_encoder(
+                self.text_encoder_name,
+                model_name=self.text_model_name,
+                pooling=self.text_pooling,
+                preprocessing=self.text_preprocessing,
+                freeze=self.freeze_text_encoder,
+                local_files_only=not self.allow_remote_model,
+                load_tokenizer=False,
+                load_model=True,
             )
-
-            if self.freeze_qwen:
-                for param in self.qwen.parameters():
-                    param.requires_grad = False
-                self.qwen.eval()
-            else:
-                self.qwen.train()
+            if int(self.text_encoder.hidden_size) != self.text_dim:
+                raise ValueError(
+                    "text_dim does not match text encoder hidden_size: "
+                    f"text_dim={self.text_dim}, "
+                    f"hidden_size={self.text_encoder.hidden_size}, "
+                    f"model={self.text_model_name}"
+                )
 
         self.blocks = nn.ModuleList(
             [
@@ -122,7 +140,6 @@ class TextGuidedFusiformer(nn.Module):
         )
 
         self.readout = AvgPooling()
-
         self.regression_head = nn.Sequential(
             nn.Linear(embed_dim, embed_dim // 2),
             nn.ReLU(),
@@ -130,63 +147,53 @@ class TextGuidedFusiformer(nn.Module):
             nn.Linear(embed_dim // 2, len(targets) if targets else 1),
         )
 
-    @staticmethod
-    def _masked_mean_pool(
-        last_hidden_state: torch.Tensor,
-        attention_mask: torch.Tensor | None,
-    ) -> torch.Tensor:
-        if attention_mask is None:
-            return last_hidden_state.mean(dim=1)
+    # ------------------------------------------------------------------
+    # Legacy compatibility properties.  They are intentionally properties,
+    # not duplicate registered modules, so state_dict uses text_encoder.*.
+    # ------------------------------------------------------------------
+    @property
+    def qwen(self):
+        return self.text_encoder
 
-        # Keep the same pooling semantics as the original project:
-        # multiplying by a float32 mask makes the pooled representation float32.
-        mask = attention_mask.unsqueeze(-1).expand_as(last_hidden_state).float()
-        return (
-            (last_hidden_state * mask).sum(dim=1)
-            / mask.sum(dim=1).clamp(min=1e-6)
-        )
+    @property
+    def qwen_model_name(self):
+        return self.text_model_name
+
+    @property
+    def freeze_qwen(self):
+        return self.freeze_text_encoder
+
+    @freeze_qwen.setter
+    def freeze_qwen(self, value):
+        self.freeze_text_encoder = bool(value)
+
+    @property
+    def load_qwen(self):
+        return self.load_text_encoder
 
     def encode_text(self, text_tokens):
-        """Online fallback: tokenize outside, run Qwen here, then text_proj."""
-        if self.qwen is None:
+        if self.text_encoder is None:
             raise RuntimeError(
-                "Qwen is not loaded in this model. "
-                "Provide inputs['text_emb'] from the precomputed cache."
+                "Text encoder is not loaded. Provide inputs['text_emb'] from the "
+                "precomputed embedding cache, or enable load_text_encoder."
             )
-
-        ctx = torch.no_grad() if self.freeze_qwen else nullcontext()
-        with ctx:
-            outputs = self.qwen(
-                input_ids=text_tokens["input_ids"],
-                attention_mask=text_tokens.get("attention_mask", None),
-                output_hidden_states=False,
-                use_cache=False,
-            )
-            pooled = self._masked_mean_pool(
-                outputs.last_hidden_state,
-                text_tokens.get("attention_mask", None),
-            )
-
+        pooled = self.text_encoder.encode_tokens(text_tokens)
         return self.text_proj(pooled)
 
     def project_cached_text(self, pooled_text_emb: torch.Tensor) -> torch.Tensor:
-        """Project cached [B, text_dim] pooled Qwen embeddings."""
         if pooled_text_emb.ndim != 2:
             raise ValueError(
                 "cached text embedding must have shape [B, text_dim], "
                 f"got {tuple(pooled_text_emb.shape)}"
             )
-
         expected = int(self.text_proj[0].in_features)
         if int(pooled_text_emb.shape[-1]) != expected:
             raise ValueError(
                 "cached text embedding dimension mismatch: "
-                f"got {pooled_text_emb.shape[-1]}, expected {expected}"
+                f"got {pooled_text_emb.shape[-1]}, expected {expected}. "
+                "Do not reuse a Qwen cache with MatSciBERT or vice versa."
             )
-
-        pooled_text_emb = pooled_text_emb.to(
-            dtype=self.text_proj[0].weight.dtype,
-        )
+        pooled_text_emb = pooled_text_emb.to(dtype=self.text_proj[0].weight.dtype)
         return self.text_proj(pooled_text_emb)
 
     def forward(self, inputs):
@@ -204,8 +211,7 @@ class TextGuidedFusiformer(nn.Module):
         valid_text_modes = {"normal", "bypass"}
         if text_mode not in valid_text_modes:
             raise ValueError(
-                f"unsupported text_mode={text_mode!r}; "
-                f"choices={sorted(valid_text_modes)}"
+                f"unsupported text_mode={text_mode!r}; choices={sorted(valid_text_modes)}"
             )
         enable_text_guidance = text_mode == "normal"
 
@@ -217,9 +223,8 @@ class TextGuidedFusiformer(nn.Module):
         if enable_text_guidance:
             cached_text_emb = inputs.get("text_emb")
             text_tokens = inputs.get("text")
-
-            # Cache has priority so Qwen is never accidentally executed when
-            # both representations are present.
+            # Cache always wins: an online model is never accidentally executed
+            # when both representations are present.
             if cached_text_emb is not None:
                 text_emb = self.project_cached_text(cached_text_emb)
             elif text_tokens is not None:
@@ -259,6 +264,6 @@ class TextGuidedFusiformer(nn.Module):
 
     def train(self, mode: bool = True):
         super().train(mode)
-        if self.freeze_qwen and self.qwen is not None:
-            self.qwen.eval()
+        if self.freeze_text_encoder and self.text_encoder is not None:
+            self.text_encoder.eval()
         return self

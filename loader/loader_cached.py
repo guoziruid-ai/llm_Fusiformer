@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Cache-aware dataset loader for llm_Fusiformer.
-
-This module intentionally leaves loader/loader.py unchanged.
-It keeps the original graph construction and split behavior, but can replace
-per-sample tokenizer work with a precomputed pooled Qwen embedding cache.
+"""Encoder-agnostic cache-aware dataset loader for llm_Fusiformer.
 
 Cache convention
 ----------------
-The .npy file is aligned to the ORIGINAL top-level JSON order:
+The .npy cache is aligned to the ORIGINAL top-level JSON order:
     cache[i] <-> data[i]
-
-Each row contains the pooled Qwen representation BEFORE the trainable
-TextGuidedFusiformer.text_proj layer.  For Qwen2.5-1.5B this is [1536].
+Each row is the pooled text representation BEFORE model.text_proj.
 """
 
 from __future__ import annotations
@@ -21,20 +14,19 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Optional
 
 import dgl
 import numpy as np
 import torch
 from jarvis.core.atoms import Atoms
-from transformers import AutoTokenizer
 
+from models.text_encoders import build_tokenizer_and_preprocessor
 from .loader import CrystalDataset, CrystalGraphDataset, split_train_val_test
 from .transforms import GraphCollecting
 
 
 class GraphCollectingCached(GraphCollecting):
-    """Original GraphCollecting + propagation of precomputed text embeddings."""
+    """Original GraphCollecting plus propagation of precomputed text embeddings."""
 
     def __call__(self, crystal):
         inputs, targets = super().__call__(crystal)
@@ -48,6 +40,7 @@ def _default_meta_path(cache_path: Path) -> Path:
 
 
 def _text_fingerprint(data, text_field: str) -> str:
+    """Fingerprint raw text + order; preprocessing settings live in metadata."""
     h = hashlib.sha256()
     for i, item in enumerate(data):
         text = item.get(text_field, "")
@@ -69,7 +62,11 @@ def _validate_cache(
     text_field: str,
     text_max_length: int,
     meta_path: str | Path | None = None,
-) -> tuple[Path, int]:
+    text_encoder_name: str | None = None,
+    text_model_name: str | None = None,
+    text_pooling: str | None = None,
+    text_preprocessing: str | None = None,
+) -> tuple[Path, int, dict]:
     cache_path = Path(cache_path).expanduser().resolve()
     if not cache_path.is_file():
         raise FileNotFoundError(f"text embedding cache does not exist: {cache_path}")
@@ -89,20 +86,24 @@ def _validate_cache(
     del arr
 
     meta = Path(meta_path).expanduser().resolve() if meta_path else _default_meta_path(cache_path)
+    info: dict = {}
     if meta.is_file():
         with meta.open("r", encoding="utf-8") as f:
             info = json.load(f)
 
-        if "num_samples" in info and int(info["num_samples"]) != int(total_samples):
+        if "num_samples" in info and int(info["num_samples"]) != total_samples:
             raise ValueError(
                 "cache metadata num_samples mismatch: "
                 f"{info['num_samples']} != {total_samples}"
             )
-        if "qwen_hidden_size" in info and int(info["qwen_hidden_size"]) != hidden_size:
+
+        metadata_hidden = info.get("hidden_size", info.get("qwen_hidden_size"))
+        if metadata_hidden is not None and int(metadata_hidden) != hidden_size:
             raise ValueError(
                 "cache metadata hidden size mismatch: "
-                f"{info['qwen_hidden_size']} != {hidden_size}"
+                f"{metadata_hidden} != {hidden_size}"
             )
+
         if "text_field" in info and str(info["text_field"]) != str(text_field):
             raise ValueError(
                 "cache metadata text_field mismatch: "
@@ -118,19 +119,39 @@ def _validate_cache(
             if str(info["text_sha256"]) != current_fingerprint:
                 raise ValueError(
                     "dataset text/order fingerprint does not match the cache. "
-                    "Regenerate the Qwen embedding cache."
+                    "Regenerate the text embedding cache."
                 )
 
-    return cache_path, hidden_size
+        expected = {
+            "encoder_name": text_encoder_name,
+            "pooling": text_pooling,
+            "preprocessing": text_preprocessing,
+        }
+        for key, wanted in expected.items():
+            if wanted is None or str(wanted).lower() == "auto" or key not in info:
+                continue
+            if str(info[key]).strip().lower() != str(wanted).strip().lower():
+                raise ValueError(
+                    f"cache metadata {key} mismatch: {info[key]!r} != {wanted!r}"
+                )
+
+        if text_model_name is not None and "model_name" in info:
+            # Paths can legitimately move between machines, so only compare the
+            # basename for local paths; exact remote IDs compare directly.
+            saved = str(info["model_name"])
+            wanted = str(text_model_name)
+            saved_base = Path(saved).name
+            wanted_base = Path(wanted).name
+            if saved != wanted and saved_base != wanted_base:
+                raise ValueError(
+                    f"cache metadata model_name mismatch: {saved!r} != {wanted!r}"
+                )
+
+    return cache_path, hidden_size, info
 
 
 class CachedCrystalGraphDataset(CrystalGraphDataset):
-    """
-    CrystalGraphDataset that reads pooled Qwen embeddings through NumPy mmap.
-
-    The mmap is opened lazily inside each DataLoader process.  This is friendly
-    to num_workers > 0 and persistent_workers=True.
-    """
+    """CrystalGraphDataset with mmap text embedding support."""
 
     def __init__(
         self,
@@ -143,6 +164,7 @@ class CachedCrystalGraphDataset(CrystalGraphDataset):
         max_neighbors=12,
         line_graph=False,
         text_tokenizer=None,
+        text_preprocessor=None,
         text_max_length=512,
         text_field="description",
     ):
@@ -158,10 +180,10 @@ class CachedCrystalGraphDataset(CrystalGraphDataset):
         )
         if len(data) != len(original_indices):
             raise ValueError(
-                f"data/original_indices length mismatch: "
-                f"{len(data)} != {len(original_indices)}"
+                f"data/original_indices length mismatch: {len(data)} != {len(original_indices)}"
             )
         self.original_indices = list(original_indices)
+        self.text_preprocessor = text_preprocessor
         self.text_embedding_cache_path = (
             None
             if text_embedding_cache_path is None
@@ -172,15 +194,12 @@ class CachedCrystalGraphDataset(CrystalGraphDataset):
     def _get_text_embedding(self, subset_index: int) -> torch.Tensor:
         if self.text_embedding_cache_path is None:
             raise RuntimeError("text_embedding_cache_path is not configured")
-
         if self._text_embedding_mmap is None:
             self._text_embedding_mmap = np.load(
                 self.text_embedding_cache_path,
                 mmap_mode="r",
             )
-
         original_index = int(self.original_indices[subset_index])
-        # Explicit copy avoids read-only memmap warnings when converting to Tensor.
         row = np.array(
             self._text_embedding_mmap[original_index],
             dtype=np.float32,
@@ -190,7 +209,6 @@ class CachedCrystalGraphDataset(CrystalGraphDataset):
 
     def __getitem__(self, index):
         info = self.data[index]
-
         crystal = {
             "info": info,
             "structure": Atoms.from_dict(info["atoms"]),
@@ -207,6 +225,8 @@ class CachedCrystalGraphDataset(CrystalGraphDataset):
                 text = ""
             if not isinstance(text, str):
                 text = str(text)
+            if self.text_preprocessor is not None:
+                text = self.text_preprocessor(text)
             tokens = self.text_tokenizer(
                 text,
                 padding="max_length",
@@ -222,32 +242,31 @@ class CachedCrystalGraphDataset(CrystalGraphDataset):
     def collect(self):
         def collect_line_graph(samples):
             inputs_list, targets_list = map(list, zip(*samples))
-
             graphs = [item["graph_input"] for item in inputs_list]
             batched_graph = dgl.batch([g[0] for g in graphs])
             batched_line_graph = dgl.batch([g[1] for g in graphs])
 
-            text_data = [item.get("text", None) for item in inputs_list]
+            text_data = [item.get("text") for item in inputs_list]
             if all(text is not None for text in text_data):
                 batched_text = {
-                    "input_ids": torch.cat(
-                        [t["input_ids"] for t in text_data],
-                        dim=0,
-                    ),
+                    "input_ids": torch.cat([t["input_ids"] for t in text_data], dim=0),
                     "attention_mask": torch.cat(
-                        [t["attention_mask"] for t in text_data],
-                        dim=0,
+                        [t["attention_mask"] for t in text_data], dim=0
                     ),
                 }
+                if all("token_type_ids" in t for t in text_data):
+                    batched_text["token_type_ids"] = torch.cat(
+                        [t["token_type_ids"] for t in text_data], dim=0
+                    )
             else:
                 batched_text = None
 
-            text_emb_data = [item.get("text_emb", None) for item in inputs_list]
-            if all(emb is not None for emb in text_emb_data):
-                batched_text_emb = torch.stack(text_emb_data, dim=0)
-            else:
-                batched_text_emb = None
-
+            text_emb_data = [item.get("text_emb") for item in inputs_list]
+            batched_text_emb = (
+                torch.stack(text_emb_data, dim=0)
+                if all(emb is not None for emb in text_emb_data)
+                else None
+            )
             batched_inputs = {
                 "graph_input": [batched_graph, batched_line_graph],
                 "text": batched_text,
@@ -265,26 +284,27 @@ def get_dataset(
     transforms=None,
     graph=False,
     line_graph=False,
-    qwen_model_name="/root/models/Qwen2.5-1.5B-Instruct",
+    # Generic names
+    text_encoder_name="auto",
+    text_model_name=None,
+    text_pooling="mean",
+    text_preprocessing="auto",
+    allow_remote_model=False,
+    # Legacy name retained for v4 callers
+    qwen_model_name=None,
     text_max_length=512,
     text_field="description",
     text_embedding_cache_path=None,
     text_embedding_meta_path=None,
 ):
-    """
-    Drop-in cache-aware replacement for loader.loader.get_dataset.
+    if text_model_name is None:
+        text_model_name = qwen_model_name or "/root/models/Qwen2.5-1.5B-Instruct"
+    if str(text_encoder_name).lower() == "auto":
+        lower_model = str(text_model_name).lower()
+        text_encoder_name = "matscibert" if "matscibert" in lower_model else "qwen"
 
-    When text_embedding_cache_path is provided:
-      * tokenizer is NOT loaded;
-      * each sample receives inputs["text_emb"];
-      * cache row selection always uses the original JSON index.
-
-    When the cache path is None, behavior falls back to the original online
-    tokenization/Qwen path.
-    """
     with open(data_path, "r", encoding="utf-8") as json_file:
         data = json.load(json_file)
-
     print(f"Loading completed. Total samples: {len(data)}")
 
     train_idx, val_idx, test_idx = split_train_val_test(
@@ -292,7 +312,6 @@ def get_dataset(
         ratio_train_val_test=ratio_train_val_test,
         n_train_val_test=n_train_val_test,
     )
-
     train_data = [data[idx] for idx in train_idx]
     val_data = [data[idx] for idx in val_idx] if val_idx else None
     test_data = [data[idx] for idx in test_idx] if test_idx else None
@@ -305,49 +324,53 @@ def get_dataset(
             train_transform = transforms[0]
             val_transform = test_transform = transforms[-1]
         else:
-            train_transform = val_transform = test_transform = transforms
+            train_transform = val_transform = test_transform = transforms[0]
     else:
         train_transform = val_transform = test_transform = transforms
 
     cache_path = None
+    tokenizer = None
+    preprocessor = None
     if text_embedding_cache_path is not None:
-        cache_path, hidden_size = _validate_cache(
+        cache_path, hidden_size, meta = _validate_cache(
             text_embedding_cache_path,
             data=data,
             text_field=text_field,
             text_max_length=text_max_length,
             meta_path=text_embedding_meta_path,
+            text_encoder_name=text_encoder_name,
+            text_model_name=text_model_name,
+            text_pooling=text_pooling,
+            text_preprocessing=text_preprocessing,
         )
+        encoder_label = meta.get("encoder_name", text_encoder_name) if meta else text_encoder_name
         print(
-            "Using precomputed Qwen text embeddings: "
-            f"{cache_path} | shape=({len(data)}, {hidden_size})"
+            "Using precomputed text embeddings: "
+            f"encoder={encoder_label} | {cache_path} | shape=({len(data)}, {hidden_size})"
         )
-        qwen_tokenizer = None
     else:
-        qwen_tokenizer = AutoTokenizer.from_pretrained(
-            qwen_model_name,
-            trust_remote_code=True,
-            local_files_only=True,
+        tokenizer, preprocessor = build_tokenizer_and_preprocessor(
+            text_encoder_name,
+            model_name=text_model_name,
+            preprocessing=text_preprocessing,
+            local_files_only=not allow_remote_model,
         )
-        if qwen_tokenizer.pad_token is None:
-            qwen_tokenizer.pad_token = qwen_tokenizer.eos_token
 
     if graph:
         common = dict(
             line_graph=line_graph,
-            text_tokenizer=qwen_tokenizer,
+            text_tokenizer=tokenizer,
+            text_preprocessor=preprocessor,
             text_max_length=text_max_length,
             text_field=text_field,
             text_embedding_cache_path=cache_path,
         )
-
         train_dataset = CachedCrystalGraphDataset(
             data=train_data,
             transforms=train_transform,
             original_indices=train_idx,
             **common,
         )
-
         val_dataset = (
             CachedCrystalGraphDataset(
                 data=val_data,
@@ -358,7 +381,6 @@ def get_dataset(
             if val_data
             else None
         )
-
         test_dataset = (
             CachedCrystalGraphDataset(
                 data=test_data,
@@ -372,14 +394,10 @@ def get_dataset(
     else:
         train_dataset = CrystalDataset(data=train_data, transforms=train_transform)
         val_dataset = (
-            CrystalDataset(data=val_data, transforms=val_transform)
-            if val_data
-            else None
+            CrystalDataset(data=val_data, transforms=val_transform) if val_data else None
         )
         test_dataset = (
-            CrystalDataset(data=test_data, transforms=test_transform)
-            if test_data
-            else None
+            CrystalDataset(data=test_data, transforms=test_transform) if test_data else None
         )
 
     return train_dataset, val_dataset, test_dataset
