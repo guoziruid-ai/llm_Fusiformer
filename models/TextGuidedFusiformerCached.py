@@ -39,6 +39,10 @@ class TextGuidedFusiformer(nn.Module):
         norm_layer=None,
         act_layer=None,
         text_dim=1536,
+        # Multi-layer text projection
+        text_proj_dim=64,
+        text_proj_hidden_dims=(256, 128),
+        text_proj_dropout=0.1,
         # New generic API
         text_encoder_name="auto",
         text_model_name=None,
@@ -71,7 +75,25 @@ class TextGuidedFusiformer(nn.Module):
             )
 
         self.targets = targets
+        self.embed_dim = int(embed_dim)
         self.text_dim = int(text_dim)
+        self.text_proj_dim = int(text_proj_dim)
+        self.text_proj_hidden_dims = tuple(int(x) for x in text_proj_hidden_dims)
+        self.text_proj_dropout = float(text_proj_dropout)
+
+        if self.text_proj_dim <= 0:
+            raise ValueError(f"text_proj_dim must be > 0, got {self.text_proj_dim}")
+        if any(x <= 0 for x in self.text_proj_hidden_dims):
+            raise ValueError(
+                "all text_proj_hidden_dims must be > 0, got "
+                f"{self.text_proj_hidden_dims}"
+            )
+        if not 0.0 <= self.text_proj_dropout < 1.0:
+            raise ValueError(
+                "text_proj_dropout must be in [0, 1), got "
+                f"{self.text_proj_dropout}"
+            )
+
         self.text_encoder_name = str(text_encoder_name)
         self.text_model_name = str(text_model_name)
         self.text_pooling = str(text_pooling)
@@ -98,11 +120,28 @@ class TextGuidedFusiformer(nn.Module):
         )
 
         # Always trainable in cache mode.
-        self.text_proj = nn.Sequential(
-            nn.Linear(self.text_dim, embed_dim),
-            norm_layer(embed_dim),
-            act_layer(),
-        )
+        # Progressive projection: D_text -> hidden dims -> text_proj_dim.
+        # Hidden stages use GELU + Dropout; the final stage intentionally
+        # omits activation so cross-attention receives signed features.
+        projection_dims = [
+            self.text_dim,
+            *self.text_proj_hidden_dims,
+            self.text_proj_dim,
+        ]
+        projection_layers = []
+        for i in range(len(projection_dims) - 1):
+            in_dim = projection_dims[i]
+            out_dim = projection_dims[i + 1]
+            projection_layers.append(nn.Linear(in_dim, out_dim))
+            projection_layers.append(norm_layer(out_dim))
+
+            is_last = i == len(projection_dims) - 2
+            if not is_last:
+                projection_layers.append(nn.GELU())
+                if self.text_proj_dropout > 0:
+                    projection_layers.append(nn.Dropout(self.text_proj_dropout))
+
+        self.text_proj = nn.Sequential(*projection_layers)
 
         self.text_encoder = None
         if self.load_text_encoder:
@@ -128,7 +167,7 @@ class TextGuidedFusiformer(nn.Module):
             [
                 TextGuidedFusiformerBlock(
                     dim=embed_dim,
-                    text_dim=embed_dim,
+                    text_dim=self.text_proj_dim,
                     num_heads=num_heads,
                     use_bias=use_bias,
                     mlp_ratio=mlp_ratio,
@@ -233,7 +272,7 @@ class TextGuidedFusiformer(nn.Module):
                 batch_size = len(batch_num_nodes_g)
                 text_emb = torch.zeros(
                     batch_size,
-                    self.text_proj[0].out_features,
+                    self.text_proj_dim,
                     device=g.device,
                     dtype=self.text_proj[0].weight.dtype,
                 )
