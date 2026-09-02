@@ -2,3 +2,4 @@ data/my_dataset.json
 output/
 log/
 __pycache__/
+data/

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# File_version: llm_Fusiformer-git/train_fusiformer_production_editor_v6.py
+
 """Fusiformer production training v5: modular text encoder entrypoint.
 
 This file deliberately REUSES the proven v4 training engine (optimizer,
@@ -54,7 +57,7 @@ output_root = RUNS_PATH / "fusiformer_production_matscibert_mlp64"
 # =============================================================================
 # 2. Dataset
 # =============================================================================
-data_path = "./data/dataset_updated_new.json"
+data_path = "./data/dataset_final_merged_with_robocrys.json"
 target_name = "e_form"
 data_split_ratio = [0.8, 0.1, 0.1]
 data_split_counts = None
@@ -93,7 +96,7 @@ text_embedding_meta_path = None
 # =============================================================================
 # 4. Fusiformer architecture
 # =============================================================================
-model_depth = 4
+model_depth = 6
 edge_input_dim = 80
 triplet_input_dim = 40
 
@@ -117,21 +120,21 @@ use_text = True
 batch_size = 32
 gradient_accumulation_steps = 2
 
-lr_schedule_total_epochs = 50
-additional_epochs = 50
+lr_schedule_total_epochs = 100
+additional_epochs = 0
 total_epochs = lr_schedule_total_epochs + additional_epochs
 
-use_stage2_dynamic_lr = True
+use_stage2_dynamic_lr = False
 stage2_peak_lr = 2.5e-5
-stage2_min_lr = 2.5e-7
+stage2_min_lr = 1e-7
 stage2_warmup_epochs = 3
 
 scale_lr_with_accumulation = True
 absolute_lr = None
 base_lr = 1e-3
 minimum_lr = None
-minimum_lr_ratio = 0.01
-warmup_ratio = 0.05
+minimum_lr_ratio = 0.0001
+warmup_ratio = 0.04
 warmup_steps_override = None
 warmup_initial_lr = 1e-7
 strict_resume_schedule = True
@@ -160,8 +163,8 @@ use_amp = False
 use_deterministic_algorithms = False
 
 best_model_monitor = "auto"
-save_interval = 10
-log_interval = 25
+save_interval = 25
+log_interval = 100
 early_stopping_patience = 10
 enable_tensorboard = True
 exclude_frozen_text_encoder_from_checkpoint = True

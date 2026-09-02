@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
+# File_version: llm_Fusiformer-git/train_fusiformer_production_editor_v4.py
 """
 Fusiformer 正式训练程序（直接运行版）
 ====================================
@@ -10,7 +12,7 @@ Fusiformer 正式训练程序（直接运行版）
 2. 将本文件放在 Fusiformer 项目根目录。
 3. 直接运行：
 
-       python train_fusiformer_production_editor.py
+       python train_fusiformer_production_editor_v4.py
 
 不需要也不会读取命令行训练参数。
 
