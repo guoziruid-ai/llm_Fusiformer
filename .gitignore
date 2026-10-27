@@ -3,3 +3,11 @@ output/
 log/
 __pycache__/
 data/
+
+# Fusiformer-V2 outputs (never commit training results or generated caches)
+runs/
+*.pt
+*.pth
+*.ckpt
+*.npy
+*.npz

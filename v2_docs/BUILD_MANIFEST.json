@@ -1,0 +1,22 @@
+{
+  "base_uploaded_source_sha256": "32afe52e19bbc1e0b303687608cb884838f8198ec9ab94901ebb0990140dca08",
+  "modified_original_files": [
+    ".gitignore"
+  ],
+  "new_files": [
+    "README_FUSIFORMER_V2.md",
+    "fusiformer_v2/__init__.py",
+    "fusiformer_v2/attention.py",
+    "fusiformer_v2/dataset.py",
+    "fusiformer_v2/model.py",
+    "fusiformer_v2/segments.py",
+    "tools/precompute_semantic_segments_v2.py",
+    "train_fusiformer_v2.py",
+    "v2_docs/INTEGRATION.md",
+    "v2_tests/test_attention.py",
+    "v2_tests/test_dataset_alignment.py",
+    "v2_tests/test_native_model_interface.py",
+    "v2_tests/test_segments.py"
+  ],
+  "tests": "13 passed (CPU, DGL/JARVIS/Transformers not installed, native graph model tested with fake parent)"
+}
