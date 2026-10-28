@@ -1,0 +1,2 @@
+# Development/test dependency only; production versions stay in environment.yml.
+pytest==9.1.1

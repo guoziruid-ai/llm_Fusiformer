@@ -1,5 +1,7 @@
 # V2 与现有 Abstract-Text-Embedding-Module 分支的接入说明
 
+> 历史接入记录：下文描述当时的合并/服务器操作，不是当前本地仓库的运行指南。其中引用的 `README_FUSIFORMER_V2.md` 和 `v2_server_healthcheck.py` 在当前工作树不存在。请以 `docs/USER_GUIDE.md` 与 `docs/PROJECT_STRUCTURE.md` 为准；不要按下文执行分支或远端命令。
+
 ## 本地 VS Code / PyCharm
 
 1. 创建 `Fusiformer-V2-CrossModal-Fusion` 新分支；原分支作为 A0 不动。

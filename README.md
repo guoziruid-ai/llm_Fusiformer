@@ -1,5 +1,25 @@
 # llm_Fusiformer
 
+## 当前工程入口（2026-10-27）
+
+本仓库同时保存当前 V2.1 ModernBERT 工作流与旧 Qwen/MatSciBERT 研究程序，不能混用模型、缓存或权重。正式入口位于 `scripts/train/` 与 `scripts/evaluate/`；请用文下的 `python -m` 规范模块路径。无 dropout scratch 入口为 `scripts/train/train_fusiformer_v2_modernbert.py`；`scripts/train/train_fusiformer_v2_modernbert_independent.py` 是 dropout/LR 默认值不同的实验。验证与独立测试分别由 `scripts/evaluate/validate_fusiformer_v2_modernbert.py`、`scripts/evaluate/test_fusiformer_v2_modernbert.py` 执行。根目录的 independent、validation 和 test 三个同名转发文件已移除，旧路径不再受支持；无 dropout 根转发暂为旧健康检查保留。运行前阅读 [使用指南](docs/USER_GUIDE.md)，给每次评估使用新的输出目录。
+
+此前独立验证任务使用 A800、无 dropout epoch 46 权重完成验证/测试各 14,326 条，见 [历史远端报告](docs/REMOTE_VALIDATION_REPORT.md)。本轮工程重构在**新的** AutoDL 独立目录重新运行了完整验证和测试，指标及 28,652 行预测数值与历史基线一致，并使 `sample_id` 正确读取 `mp_id`；具体命令、退出状态和结果路径见 [本轮验收报告](docs/REFACTOR_TEST_REPORT.md)。[文件资产清单](docs/FILE_ASSET_INVENTORY.md) 和 [移动日志](docs/FILE_CLEANUP_LOG.md) 记录历史脚本去向。下文 Qwen 内容是旧工作流。
+
+从项目根目录、已激活的现有 `fusiformer` 环境运行以下命令；默认配置读取 `data/`、`external/ModernBERT-base` 和 `checkpoints/best_model_weights.pt`，这些大资源不包含在仓库中，需先按 [使用指南](docs/USER_GUIDE.md) 放置或修改入口顶部配置。`environment.yml` 是已验证 Linux 环境的版本快照；`requirements-dev.txt` 单列测试依赖，本轮未安装/升级依赖。
+
+```bash
+python -m scripts.diagnostics.check_environment
+python -m scripts.data.check_v2_assets
+python -m scripts.train.train_fusiformer_v2_modernbert --check-config
+python -u -m scripts.train.train_fusiformer_v2_modernbert  # 仅在准备启动新训练时
+python -m scripts.evaluate.validate_fusiformer_v2_modernbert
+python -m scripts.evaluate.test_fusiformer_v2_modernbert
+python -m pytest -q
+```
+
+[项目结构](docs/PROJECT_STRUCTURE.md) 解释实际目录与调用关系；[开发约定](docs/DEVELOPMENT.md) 说明扩展位置、资源边界和测试方法。以下内容保留旧 Qwen 链的历史说明，不是当前 V2.1 的默认运行命令。
+
 本仓库是在 `GengCongcong/llm_Fusiformer` 基础上修改得到的实验版本。当前版本的主要目标是：在原有 Fusiformer 晶体图神经网络框架中引入 Qwen 文本语义信息，使模型能够同时利用晶体结构图信息与材料文本描述信息进行性质回归预测。
 
 默认任务为材料形成能预测：
@@ -127,11 +147,13 @@ targets = targets.to(device, non_blocking=True)
 ```bash
 python test_qwen_local.py
 python debug_dataset_one.py
-python debug_bad_text_samples.py
+python -m scripts.diagnostics.legacy.debug_bad_text_samples
 python debug_dataloader_batch.py
 python debug_engine_to_device.py
 python debug_model_forward.py
 ```
+
+以上是旧 Qwen 工作流命令，不能据此判断当前 V2.1 诊断状态。`debug_dataset_one.py` 仍使用字面路径 `ROOT/data/my_dataset.json`；文本扫描器规范实现仍指向相邻旧仓目录，运行前需核实输入路径。其旧根转发 `debug_bad_text_samples.py` 已移除。当前正式预检以文首 `scripts/` 命令为准。
 
 每一步的作用如下：
 

@@ -1,11 +1,17 @@
-data/my_dataset.json
+/data/my_dataset.json
 output/
 log/
 __pycache__/
-data/
+/data/
 
 # Fusiformer-V2 outputs (never commit training results or generated caches)
 runs/
+checkpoints/
+external/
+docs/
+v2_tests/
+v2_docs/
+
 *.pt
 *.pth
 *.ckpt

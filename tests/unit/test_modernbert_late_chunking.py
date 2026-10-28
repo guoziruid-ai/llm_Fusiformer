@@ -16,6 +16,8 @@ from tools.precompute_modernbert_late_v2 import document_embedding, fingerprint_
 
 class ToyTokenizer:
     is_fast = True
+    cls_token_id = 1
+    sep_token_id = 2
 
     def __call__(self, text, add_special_tokens=False, truncation=False,
                  return_offsets_mapping=False, return_attention_mask=False):

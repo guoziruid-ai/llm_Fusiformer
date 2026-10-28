@@ -60,7 +60,7 @@ def test_index_alignment_and_cache_validation(tmp_path):
     cached_module._text_fingerprint = fingerprint
     spec = importlib.util.spec_from_file_location(
         'fusiformer_v2.dataset_test_fake',
-        Path(__file__).resolve().parents[1] / 'fusiformer_v2' / 'dataset.py')
+        Path(__file__).resolve().parents[2] / 'fusiformer_v2' / 'dataset.py')
     dataset_module = importlib.util.module_from_spec(spec)
     with patch.dict(sys.modules, {'loader': loader_pkg,
                                   'loader.loader': loader_module,

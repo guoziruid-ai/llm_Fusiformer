@@ -137,19 +137,6 @@ def evaluate(data_loader, model, device, amp=True):
                 'text': None
             }
         
-        # 将inputs中的所有张量移动到device
-        def to_device(data, device):
-            if isinstance(data, dict):
-                return {k: to_device(v, device) for k, v in data.items()}
-            elif isinstance(data, list):
-                return [to_device(x, device) for x in data]
-            elif isinstance(data, tuple):
-                return tuple(to_device(x, device) for x in data)
-            elif hasattr(data, 'to'):
-                return data.to(device, non_blocking=True)
-            else:
-                return data
-        
         inputs = to_device(inputs, device)
         targets = targets.to(device, non_blocking=True)
 

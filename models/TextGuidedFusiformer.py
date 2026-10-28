@@ -1,5 +1,3 @@
-import os
-os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 from typing import Tuple, Union, Optional
 
 import dgl
@@ -355,9 +353,6 @@ class TextGuidedFusiformer(nn.Module):
             norm_layer(embed_dim),
             act_layer(),
         )
-        
-        # 设置环境变量使用国内镜像（可选）
-        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
         
         # 加载预训练的 Qwen 模型
         self.qwen = AutoModel.from_pretrained(

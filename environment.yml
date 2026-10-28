@@ -157,4 +157,3 @@ dependencies:
       - urllib3==2.5.0
       - wrapt==2.0.0
       - xmltodict==1.0.2
-prefix: /data/home/gcc/anaconda3/envs/fusiformer

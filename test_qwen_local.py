@@ -1,26 +1,8 @@
-import os
-
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
-
-from transformers import AutoTokenizer, AutoModel
-
-model_path = "/root/models/Qwen2.5-1.5B-Instruct"
-
-print("Loading tokenizer...")
-tokenizer = AutoTokenizer.from_pretrained(
-    model_path,
-    trust_remote_code=True,
-    local_files_only=True
-)
-
-print("Loading model...")
-model = AutoModel.from_pretrained(
-    model_path,
-    trust_remote_code=True,
-    output_hidden_states=True,
-    local_files_only=True
-)
-
-print("Loaded successfully.")
-print("hidden size:", model.config.hidden_size)
+"""Legacy path for scripts.diagnostics.legacy.test_qwen_local."""
+if __name__ == "__main__":
+    import runpy
+    runpy.run_module("scripts.diagnostics.legacy.test_qwen_local", run_name="__main__")
+else:
+    import importlib
+    import sys
+    sys.modules[__name__] = importlib.import_module("scripts.diagnostics.legacy.test_qwen_local")

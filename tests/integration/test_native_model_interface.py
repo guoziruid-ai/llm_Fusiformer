@@ -72,7 +72,7 @@ class FakeParent(nn.Module):
 def load_with_fake_parent():
     stub = types.ModuleType("models.TextGuidedFusiformerCached")
     stub.TextGuidedFusiformer = FakeParent
-    real = Path(__file__).resolve().parents[1] / "fusiformer_v2" / "model.py"
+    real = Path(__file__).resolve().parents[2] / "fusiformer_v2" / "model.py"
     spec = importlib.util.spec_from_file_location("fusiformer_v2.model_test_fake", real)
     mod = importlib.util.module_from_spec(spec)
     with patch.dict(sys.modules, {"models.TextGuidedFusiformerCached": stub}):
