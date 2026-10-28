@@ -12,6 +12,8 @@ docs/
 v2_tests/
 v2_docs/
 
+AGENTS.md
+
 *.pt
 *.pth
 *.ckpt
