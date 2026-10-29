@@ -33,7 +33,7 @@ from models.TextGuidedFusiformerCached import TextGuidedFusiformer
 from models.text_encoders import get_text_hidden_size
 
 SCRIPT_VERSION = "2026-08-19-modular-text-encoder-v5"
-BASE_PATH = Path(__file__).resolve().parents[2]
+BASE_PATH = Path(__file__).resolve().parents[3]
 RUNS_PATH = BASE_PATH / "runs"
 
 

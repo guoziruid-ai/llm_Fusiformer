@@ -7,10 +7,10 @@ from unittest.mock import patch
 
 import numpy as np
 
-from experiments.cluster_specialists.config import SplitRatios
-from experiments.cluster_specialists.manifests import (
+from scripts.experiments.cluster_specialists.config import SplitRatios
+from scripts.experiments.cluster_specialists.manifests import (
     build_manifest, read_manifest, validate_manifest, write_manifests)
-from experiments.cluster_specialists.routing import CentroidRouter, load_router
+from scripts.experiments.cluster_specialists.routing import CentroidRouter, load_router
 from scripts.data.generate_cluster_splits import _align_features, prepare_centroid
 from scripts.data import generate_cluster_splits as entry
 

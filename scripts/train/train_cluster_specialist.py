@@ -15,13 +15,13 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from experiments.cluster_specialists.checkpoints import (
+from scripts.experiments.cluster_specialists.checkpoints import (
     checkpoint_payload, manifest_fingerprint, save_checkpoint)
-from experiments.cluster_specialists.config import HistoricalMultiSourceConfig, HistoricalSourceConfig
-from experiments.cluster_specialists.alignment import load_aligned_array
-from experiments.cluster_specialists.manifests import read_manifest
-from experiments.cluster_specialists.models import TensorMLPExpert
-from experiments.cluster_specialists.training import train_tensor_expert
+from scripts.experiments.cluster_specialists.config import HistoricalMultiSourceConfig, HistoricalSourceConfig
+from scripts.experiments.cluster_specialists.alignment import load_aligned_array
+from scripts.experiments.cluster_specialists.manifests import read_manifest
+from scripts.experiments.cluster_specialists.models import TensorMLPExpert
+from scripts.experiments.cluster_specialists.training import train_tensor_expert
 
 ROOT = Path(__file__).resolve().parents[2]
 

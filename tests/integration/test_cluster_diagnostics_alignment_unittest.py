@@ -8,9 +8,9 @@ from unittest.mock import patch
 
 import numpy as np
 
-from experiments.cluster_specialists.manifests import write_manifests
-from experiments.cluster_specialists.config import SplitRatios
-from experiments.cluster_specialists.routing import FixedBoundaryRouter
+from scripts.experiments.cluster_specialists.manifests import write_manifests
+from scripts.experiments.cluster_specialists.config import SplitRatios
+from scripts.experiments.cluster_specialists.routing import FixedBoundaryRouter
 from scripts.diagnostics import analyze_cluster_specialists as diagnostic
 
 

@@ -6,8 +6,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from experiments.cluster_specialists.historical import load_historical_rows, verify_grouped3_mapping
-from experiments.cluster_specialists.config import HistoricalSourceConfig
+from scripts.experiments.cluster_specialists.historical import load_historical_rows, verify_grouped3_mapping
+from scripts.experiments.cluster_specialists.config import HistoricalSourceConfig
 
 
 class HistoricalLabelsTest(unittest.TestCase):

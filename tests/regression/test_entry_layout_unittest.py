@@ -9,7 +9,6 @@ from contextlib import redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-import train_fusiformer_v2_modernbert as legacy_train
 from scripts.evaluate import test_fusiformer_v2_modernbert as canonical_test
 from scripts.evaluate import validate_fusiformer_v2_modernbert as canonical_validation
 from scripts.train import train_fusiformer_v2_modernbert as canonical_train
@@ -19,19 +18,19 @@ from scripts.data import check_v2_assets
 
 ROOT = Path(__file__).resolve().parents[2]
 LEGACY_MOVES = {
-    "analyze_text_effect_results.py": "experiments.text_effect.analyze_text_effect_results",
-    "analyze_text_effect_results_robo_wiki.py": "experiments.text_effect.analyze_text_effect_results_robo_wiki",
-    "experiment_text_effect_editor.py": "experiments.text_effect.experiment_text_effect_editor",
-    "fusiformer_text_vector_effect_v5.py": "experiments.text_effect.fusiformer_text_vector_effect_v5",
-    "fusiformer_text_vector_shuffle_effect_experiment.py": "experiments.text_effect.fusiformer_text_vector_shuffle_effect_experiment",
-    "fusiformer_text_vector_shuffle_effect_experiment_v4.py": "experiments.text_effect.fusiformer_text_vector_shuffle_effect_experiment_v4",
-    "train_fusiformer_production_2Stages_ScratchTraining.py": "experiments.matscibert.train_fusiformer_production_2Stages_ScratchTraining",
-    "train_fusiformer_production_WeghtsMode.py": "experiments.matscibert.train_fusiformer_production_WeghtsMode",
-    "train_fusiformer_production_editor_v2.py": "experiments.a0_legacy.train_fusiformer_production_editor_v2",
-    "train_fusiformer_production_editor_v3.py": "experiments.a0_legacy.train_fusiformer_production_editor_v3",
-    "train_fusiformer_production_editor_v5.py": "experiments.a0_legacy.train_fusiformer_production_editor_v5",
-    "main_crysformer.py": "experiments.qwen_legacy.main_crysformer",
-    "test_dataset_effect_with_logging.py": "experiments.qwen_legacy.test_dataset_effect_with_logging",
+    "analyze_text_effect_results.py": "scripts.experiments.text_effect.analyze_text_effect_results",
+    "analyze_text_effect_results_robo_wiki.py": "scripts.experiments.text_effect.analyze_text_effect_results_robo_wiki",
+    "experiment_text_effect_editor.py": "scripts.experiments.text_effect.experiment_text_effect_editor",
+    "fusiformer_text_vector_effect_v5.py": "scripts.experiments.text_effect.fusiformer_text_vector_effect_v5",
+    "fusiformer_text_vector_shuffle_effect_experiment.py": "scripts.experiments.text_effect.fusiformer_text_vector_shuffle_effect_experiment",
+    "fusiformer_text_vector_shuffle_effect_experiment_v4.py": "scripts.experiments.text_effect.fusiformer_text_vector_shuffle_effect_experiment_v4",
+    "train_fusiformer_production_2Stages_ScratchTraining.py": "scripts.experiments.matscibert.train_fusiformer_production_2Stages_ScratchTraining",
+    "train_fusiformer_production_WeghtsMode.py": "scripts.experiments.matscibert.train_fusiformer_production_WeghtsMode",
+    "train_fusiformer_production_editor_v2.py": "scripts.experiments.a0_legacy.train_fusiformer_production_editor_v2",
+    "train_fusiformer_production_editor_v3.py": "scripts.experiments.a0_legacy.train_fusiformer_production_editor_v3",
+    "train_fusiformer_production_editor_v5.py": "scripts.experiments.a0_legacy.train_fusiformer_production_editor_v5",
+    "main_crysformer.py": "scripts.experiments.qwen_legacy.main_crysformer",
+    "test_dataset_effect_with_logging.py": "scripts.experiments.qwen_legacy.test_dataset_effect_with_logging",
     "debug_dataloader_batch.py": "scripts.diagnostics.legacy.debug_dataloader_batch",
     "debug_engine_to_device.py": "scripts.diagnostics.legacy.debug_engine_to_device",
     "debug_model_forward.py": "scripts.diagnostics.legacy.debug_model_forward",
@@ -40,14 +39,15 @@ LEGACY_MOVES = {
 
 
 class EntryLayoutTests(unittest.TestCase):
-    def test_formal_entries_keep_project_paths_and_remaining_healthcheck_shim(self):
-        self.assertIs(legacy_train.CFG, canonical_train.CFG)
+    def test_formal_entries_keep_project_paths_and_canonical_config(self):
+        self.assertIsInstance(canonical_train.CFG, canonical_train.Config)
         for module in (canonical_train, canonical_independent, canonical_validation, canonical_test):
             self.assertEqual(module.ROOT, ROOT)
             self.assertTrue(callable(module.main))
         self.assertNotEqual(canonical_validation.OUTPUT_CONFIG["directory"],
                             canonical_test.OUTPUT_CONFIG["directory"])
-        for removed in ("train_fusiformer_v2_modernbert_independent.py",
+        for removed in ("train_fusiformer_v2_modernbert.py",
+                        "train_fusiformer_v2_modernbert_independent.py",
                         "validate_fusiformer_v2_modernbert.py",
                         "test_fusiformer_v2_modernbert.py"):
             self.assertFalse((ROOT / removed).exists(), removed)
@@ -56,11 +56,14 @@ class EntryLayoutTests(unittest.TestCase):
         for legacy, target in LEGACY_MOVES.items():
             with self.subTest(legacy=legacy):
                 wrapper = ROOT / legacy
-                self.assertTrue(wrapper.is_file())
-                text = wrapper.read_text(encoding="utf-8")
-                self.assertIn(target, text)
                 self.assertIsNotNone(importlib.util.find_spec(target))
-                self.assertLess(len(text.splitlines()), 15)
+                if legacy == "main_crysformer.py":
+                    self.assertTrue(wrapper.is_file())
+                    text = wrapper.read_text(encoding="utf-8")
+                    self.assertIn(target, text)
+                    self.assertLess(len(text.splitlines()), 15)
+                else:
+                    self.assertFalse(wrapper.exists(), legacy)
 
     def test_text_diagnostic_canonical_entry_with_in_memory_json(self):
         self.assertFalse((ROOT / "debug_bad_text_samples.py").exists())

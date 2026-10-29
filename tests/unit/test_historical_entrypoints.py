@@ -10,9 +10,9 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
-from experiments.cluster_specialists.checkpoints import checkpoint_payload, manifest_fingerprint
-from experiments.cluster_specialists.config import HistoricalMultiSourceConfig, HistoricalSourceConfig
-from experiments.cluster_specialists.models import TensorMLPExpert
+from scripts.experiments.cluster_specialists.checkpoints import checkpoint_payload, manifest_fingerprint
+from scripts.experiments.cluster_specialists.config import HistoricalMultiSourceConfig, HistoricalSourceConfig
+from scripts.experiments.cluster_specialists.models import TensorMLPExpert
 from scripts.train import train_cluster_specialist as train
 from scripts.evaluate import evaluate_cluster_specialists as evaluate
 

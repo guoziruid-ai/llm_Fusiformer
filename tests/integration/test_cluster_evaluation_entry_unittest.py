@@ -10,11 +10,11 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
-from experiments.cluster_specialists.checkpoints import checkpoint_payload, manifest_fingerprint, save_checkpoint
-from experiments.cluster_specialists.config import SplitRatios
-from experiments.cluster_specialists.manifests import build_manifest, write_manifests
-from experiments.cluster_specialists.models import TensorMLPExpert
-from experiments.cluster_specialists.routing import FixedBoundaryRouter
+from scripts.experiments.cluster_specialists.checkpoints import checkpoint_payload, manifest_fingerprint, save_checkpoint
+from scripts.experiments.cluster_specialists.config import SplitRatios
+from scripts.experiments.cluster_specialists.manifests import build_manifest, write_manifests
+from scripts.experiments.cluster_specialists.models import TensorMLPExpert
+from scripts.experiments.cluster_specialists.routing import FixedBoundaryRouter
 from scripts.evaluate import evaluate_cluster_specialists as entry
 
 
@@ -122,7 +122,7 @@ class EvaluationEntrySmokeTests(unittest.TestCase):
             changed_rows = [dict(row) for row in rows]
             changed_rows[0]["split"] = "test" if changed_rows[0]["split"] != "test" else "train"
             self.assertNotEqual(manifest_fingerprint(changed_rows), manifest_fingerprint(rows))
-            from experiments.cluster_specialists.checkpoints import load_checkpoint
+            from scripts.experiments.cluster_specialists.checkpoints import load_checkpoint
             with self.assertRaisesRegex(ValueError, "manifest fingerprint"):
                 load_checkpoint(checkpoints[0][1], TensorMLPExpert(2, (4,)),
                                 expected_cluster="A", expected_mode="direct",

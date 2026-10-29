@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from experiments.cluster_specialists.alignment import IDENTITY_FIELDS, load_aligned_array
+from scripts.experiments.cluster_specialists.alignment import IDENTITY_FIELDS, load_aligned_array
 
 
 class AlignmentTests(unittest.TestCase):

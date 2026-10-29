@@ -69,7 +69,7 @@ except ImportError:
 
 
 SCRIPT_VERSION = "2026-09-01-standalone-matscibert-weights-mode-v1"
-BASE_PATH = Path(__file__).resolve().parents[2]
+BASE_PATH = Path(__file__).resolve().parents[3]
 RUNS_PATH = BASE_PATH / "runs"
 
 

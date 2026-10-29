@@ -7,10 +7,10 @@ from pathlib import Path
 
 import numpy as np
 
-from experiments.cluster_specialists.manifests import read_manifest
-from experiments.cluster_specialists.alignment import load_aligned_array
-from experiments.cluster_specialists.metrics import regression_metrics
-from experiments.cluster_specialists.routing import CentroidRouter, load_router
+from scripts.experiments.cluster_specialists.manifests import read_manifest
+from scripts.experiments.cluster_specialists.alignment import load_aligned_array
+from scripts.experiments.cluster_specialists.metrics import regression_metrics
+from scripts.experiments.cluster_specialists.routing import CentroidRouter, load_router
 
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST_PATH = ROOT / "runs/cluster_specialists/manifests_seed42/cluster_manifest.csv"

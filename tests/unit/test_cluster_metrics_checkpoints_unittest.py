@@ -6,12 +6,12 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from experiments.cluster_specialists.checkpoints import (
+from scripts.experiments.cluster_specialists.checkpoints import (
     checkpoint_payload, load_checkpoint, save_checkpoint)
-from experiments.cluster_specialists.metrics import (
+from scripts.experiments.cluster_specialists.metrics import (
     improvement_summary, paired_bootstrap_mae_improvement,
     regression_metrics)
-from experiments.cluster_specialists.models import TensorMLPExpert
+from scripts.experiments.cluster_specialists.models import TensorMLPExpert
 from scripts.evaluate import evaluate_cluster_specialists as evaluation_entry
 
 

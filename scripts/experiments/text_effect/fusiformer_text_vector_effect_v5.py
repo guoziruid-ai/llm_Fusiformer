@@ -86,7 +86,7 @@ import matplotlib.pyplot as plt
 # =============================================================================
 # 0. 可编辑配置
 # =============================================================================
-BASE_PATH = Path(__file__).resolve().parents[2]
+BASE_PATH = Path(__file__).resolve().parents[3]
 
 # 优先使用 v6；若服务器之后把正式训练入口改名，可在此修改。
 TRAINING_MODULE_NAME = "train_fusiformer_production_editor_v6"

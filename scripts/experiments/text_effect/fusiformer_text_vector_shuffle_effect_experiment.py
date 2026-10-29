@@ -98,7 +98,7 @@ import matplotlib.pyplot as plt
 # 可编辑运行配置
 # =============================================================================
 # 所有相对路径都相对于本脚本所在项目根目录解析。
-BASE_PATH = Path(__file__).resolve().parents[2]
+BASE_PATH = Path(__file__).resolve().parents[3]
 
 # -----------------------
 # 1. 路径配置
@@ -251,26 +251,6 @@ HEATMAP_USE_ABS_ATTRIBUTION = False
 
 # 保存热力图分辨率。
 HEATMAP_DPI = 300
-
-# 统一热力图纵轴尺寸：
-# - True：一次实验内所有“样本 × ...”热力图使用相同的样本顺序、相同行数、相同图像高度；
-#         便于 mode_error / IG / differential IG / Top-K occlusion 之间逐行比较。
-# - False：保留旧版按内容自适应高度的行为。
-HEATMAP_UNIFIED_Y_AXIS = True
-
-# 每个样本行在纵轴方向的目标高度，单位 inch。数值越大，每一行越高。
-HEATMAP_ROW_HEIGHT_INCH = 0.28
-
-# 统一样本热力图的额外高度，预留给标题、x/y 标签和 colorbar。
-HEATMAP_EXTRA_HEIGHT_INCH = 2.8
-
-# 统一样本热力图的高度下限 / 上限，避免样本很少时过矮或样本很多时过高。
-HEATMAP_MIN_HEIGHT_INCH = 6.0
-HEATMAP_MAX_HEIGHT_INCH = 28.0
-
-# 单样本 8×16 projected channel block 热力图也固定使用同一尺寸。
-HEATMAP_SINGLE_BLOCK_WIDTH_INCH = 10.5
-HEATMAP_SINGLE_BLOCK_HEIGHT_INCH = 5.0
 
 # 日志间隔。
 SCAN_LOG_INTERVAL = 50
@@ -484,13 +464,6 @@ class RuntimeConfig:
     heatmap_single_sample_limit: int
     heatmap_use_abs_attribution: bool
     heatmap_dpi: int
-    heatmap_unified_y_axis: bool
-    heatmap_row_height_inch: float
-    heatmap_extra_height_inch: float
-    heatmap_min_height_inch: float
-    heatmap_max_height_inch: float
-    heatmap_single_block_width_inch: float
-    heatmap_single_block_height_inch: float
 
 
 def build_config() -> RuntimeConfig:
@@ -555,13 +528,6 @@ def build_config() -> RuntimeConfig:
         heatmap_single_sample_limit=int(HEATMAP_SINGLE_SAMPLE_LIMIT),
         heatmap_use_abs_attribution=bool(HEATMAP_USE_ABS_ATTRIBUTION),
         heatmap_dpi=int(HEATMAP_DPI),
-        heatmap_unified_y_axis=bool(HEATMAP_UNIFIED_Y_AXIS),
-        heatmap_row_height_inch=float(HEATMAP_ROW_HEIGHT_INCH),
-        heatmap_extra_height_inch=float(HEATMAP_EXTRA_HEIGHT_INCH),
-        heatmap_min_height_inch=float(HEATMAP_MIN_HEIGHT_INCH),
-        heatmap_max_height_inch=float(HEATMAP_MAX_HEIGHT_INCH),
-        heatmap_single_block_width_inch=float(HEATMAP_SINGLE_BLOCK_WIDTH_INCH),
-        heatmap_single_block_height_inch=float(HEATMAP_SINGLE_BLOCK_HEIGHT_INCH),
     )
 
 
@@ -597,16 +563,6 @@ def validate_config(cfg: RuntimeConfig) -> None:
         raise ValueError("HEATMAP_SINGLE_SAMPLE_LIMIT must be non-negative")
     if cfg.heatmap_dpi <= 0:
         raise ValueError("HEATMAP_DPI must be positive")
-    if cfg.heatmap_row_height_inch <= 0:
-        raise ValueError("HEATMAP_ROW_HEIGHT_INCH must be positive")
-    if cfg.heatmap_extra_height_inch < 0:
-        raise ValueError("HEATMAP_EXTRA_HEIGHT_INCH must be non-negative")
-    if cfg.heatmap_min_height_inch <= 0 or cfg.heatmap_max_height_inch <= 0:
-        raise ValueError("HEATMAP_MIN_HEIGHT_INCH and HEATMAP_MAX_HEIGHT_INCH must be positive")
-    if cfg.heatmap_min_height_inch > cfg.heatmap_max_height_inch:
-        raise ValueError("HEATMAP_MIN_HEIGHT_INCH cannot be larger than HEATMAP_MAX_HEIGHT_INCH")
-    if cfg.heatmap_single_block_width_inch <= 0 or cfg.heatmap_single_block_height_inch <= 0:
-        raise ValueError("single block heatmap size must be positive")
     if cfg.num_shuffle_repeats < 1:
         raise ValueError("NUM_SHUFFLE_REPEATS must be >= 1")
     if cfg.differential_ig_steps < 1:
@@ -1153,16 +1109,8 @@ def save_matrix_heatmap(
     dpi: int = 300,
     max_xticks: int = 32,
     max_yticks: int = 80,
-    fig_width: Optional[float] = None,
-    fig_height: Optional[float] = None,
 ) -> None:
-    """
-    Save a general 2D heatmap using matplotlib only.
-
-    fig_height 可由 generate_additional_heatmaps 统一传入。这样同一次实验中
-    mode_error / projected IG / differential IG / occlusion 等“样本 × ...”
-    热力图具有相同的纵轴物理尺寸，便于逐行比较样本。
-    """
+    """Save a general 2D heatmap using matplotlib only."""
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -1179,8 +1127,8 @@ def save_matrix_heatmap(
         vmax = _safe_percentile(mat, 98, default=1.0)
         cmap = "viridis"
 
-    fig_w = fig_width if fig_width is not None else max(7.0, min(20.0, 0.16 * mat.shape[1] + 4.0))
-    fig_h = fig_height if fig_height is not None else max(3.8, min(18.0, 0.24 * mat.shape[0] + 2.5))
+    fig_w = max(7.0, min(20.0, 0.16 * mat.shape[1] + 4.0))
+    fig_h = max(3.8, min(18.0, 0.24 * mat.shape[0] + 2.5))
     plt.figure(figsize=(fig_w, fig_h))
     im = plt.imshow(mat, aspect="auto", cmap=cmap, vmin=vmin, vmax=vmax)
     plt.title(title)
@@ -1243,100 +1191,6 @@ def load_attribution_vector_from_csv(
     return values
 
 
-def compute_unified_heatmap_height(n_rows: int, cfg: RuntimeConfig) -> float:
-    """
-    Compute the shared vertical size for all sample-level heatmaps in one run.
-
-    统一规则：同一次实验内，只要是“样本 × ...”热力图，就使用相同的 fig_height。
-    这样 mode_error / projected IG / differential IG / occlusion 可以并排逐行比较。
-    """
-    n = max(int(n_rows), 1)
-    height = cfg.heatmap_extra_height_inch + cfg.heatmap_row_height_inch * n
-    height = max(cfg.heatmap_min_height_inch, height)
-    height = min(cfg.heatmap_max_height_inch, height)
-    return float(height)
-
-
-def _read_json_if_exists(path: Path) -> dict[str, Any]:
-    path = Path(path)
-    if not path.is_file():
-        return {}
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            payload = json.load(f)
-        return payload if isinstance(payload, dict) else {}
-    except Exception:
-        return {}
-
-
-def _parse_test_sample_idx_from_dirname(name: str) -> Optional[int]:
-    # sample dir name generated by this script: test_000123_orig_4567_xxx
-    parts = name.split("_")
-    if len(parts) >= 2 and parts[0] == "test":
-        try:
-            return int(parts[1])
-        except Exception:
-            return None
-    return None
-
-
-def collect_canonical_heatmap_samples(
-    samples_root: Path,
-    cfg: RuntimeConfig,
-) -> list[dict[str, Any]]:
-    """
-    Build the canonical sample axis used by all sample-level heatmaps.
-
-    All sample × ... heatmaps must use this same sample list and order. If a
-    particular CSV is missing for one sample, that row is kept and filled with
-    NaN rather than being skipped, so the y-axis remains identical across plots.
-    """
-    samples_root = Path(samples_root)
-    if not samples_root.exists():
-        return []
-    sample_dirs = sorted([p for p in samples_root.iterdir() if p.is_dir()])[: cfg.heatmap_max_samples]
-    canonical: list[dict[str, Any]] = []
-    for sample_dir in sample_dirs:
-        summary = _read_json_if_exists(sample_dir / "sample_summary.json")
-        sample_idx = summary.get("test_sample_idx")
-        if sample_idx is None:
-            sample_idx = _parse_test_sample_idx_from_dirname(sample_dir.name)
-        original_idx = summary.get("original_idx")
-        material_id = str(summary.get("material_id", ""))
-        try:
-            sample_idx_int = int(sample_idx) if sample_idx is not None else None
-        except Exception:
-            sample_idx_int = None
-        label = sample_dir.name[:36]
-        if sample_idx_int is not None:
-            label = f"test_{sample_idx_int:06d}"
-            if material_id and material_id.lower() != "nan":
-                label += f"_{material_id[:12]}"
-        canonical.append(
-            {
-                "sample_dir": sample_dir,
-                "test_sample_idx": sample_idx_int,
-                "original_idx": original_idx,
-                "material_id": material_id,
-                "label": label,
-            }
-        )
-    return canonical
-
-
-def _build_summary_lookup(csv_path: Path) -> dict[int, dict[str, str]]:
-    rows = _csv_rows(csv_path)
-    lookup: dict[int, dict[str, str]] = {}
-    for r in rows:
-        key = r.get("test_sample_idx", r.get("sample_idx", ""))
-        try:
-            idx = int(float(key))
-        except Exception:
-            continue
-        lookup[idx] = r
-    return lookup
-
-
 def save_single_projected_128_block_heatmap(
     csv_path: Path,
     output_path: Path,
@@ -1348,7 +1202,6 @@ def save_single_projected_128_block_heatmap(
     Save one 8×16 heatmap for a single sample's 128 projected text channels.
 
     注意：8×16 只是可视化排列，不表示通道之间存在真实二维拓扑关系。
-    本版本固定所有单样本 block heatmap 的宽高，便于样本内和样本间比较。
     """
     vec = load_attribution_vector_from_csv(csv_path, expected_size=128, value_col=value_col)
     if vec is None:
@@ -1358,7 +1211,7 @@ def save_single_projected_128_block_heatmap(
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.figure(figsize=(cfg.heatmap_single_block_width_inch, cfg.heatmap_single_block_height_inch))
+    plt.figure(figsize=(10.5, 5.0))
     im = plt.imshow(mat, aspect="auto", cmap="coolwarm", vmin=-vmax, vmax=vmax)
     plt.title(title)
     plt.xlabel("visualized channel block column")
@@ -1377,14 +1230,7 @@ def save_single_projected_128_block_heatmap(
     plt.close()
 
 
-def save_mode_error_heatmap(
-    run_dir: Path,
-    cfg: RuntimeConfig,
-    logger: logging.Logger,
-    *,
-    canonical_samples: Optional[list[dict[str, Any]]] = None,
-    common_fig_height: Optional[float] = None,
-) -> None:
+def save_mode_error_heatmap(run_dir: Path, cfg: RuntimeConfig, logger: logging.Logger) -> None:
     """Save sample × {normal,bypass,shuffle} absolute-error heatmap."""
     csv_path = run_dir / "test_shuffle_effect_summary.csv"
     rows = _csv_rows(csv_path)
@@ -1392,51 +1238,30 @@ def save_mode_error_heatmap(
         logger.warning("skip mode error heatmap; missing or empty: %s", csv_path)
         return
 
-    if canonical_samples:
-        lookup = _build_summary_lookup(csv_path)
-        matrix_rows = []
-        row_labels = []
-        for item in canonical_samples:
-            idx = item.get("test_sample_idx")
-            r = lookup.get(idx) if idx is not None else None
-            if r is None:
-                matrix_rows.append([np.nan, np.nan, np.nan])
-            else:
-                matrix_rows.append(
-                    [
-                        _to_float(r.get("error_normal"), default=np.nan),
-                        _to_float(r.get("error_bypass"), default=np.nan),
-                        _to_float(r.get("error_shuffle_mean"), default=np.nan),
-                    ]
-                )
-            row_labels.append(str(item.get("label", "sample")))
-        matrix = np.asarray(matrix_rows, dtype=np.float64)
-    else:
-        # Fallback when no sample analysis was run: show top-N rows by text_help_shuffle.
-        sort_key = "text_help_shuffle" if "text_help_shuffle" in rows[0] else "abs_delta_shuffle"
-        rows = sorted(rows, key=lambda r: _to_float(r.get(sort_key), default=0.0), reverse=True)
-        rows = rows[: cfg.heatmap_top_n_mode_error]
-        matrix = np.array(
+    # 优先展示正确文本相对 shuffle 改善最大的样本。
+    sort_key = "text_help_shuffle" if "text_help_shuffle" in rows[0] else "abs_delta_shuffle"
+    rows = sorted(rows, key=lambda r: _to_float(r.get(sort_key), default=0.0), reverse=True)
+    rows = rows[: cfg.heatmap_top_n_mode_error]
+
+    matrix = np.array(
+        [
             [
-                [
-                    _to_float(r.get("error_normal"), default=np.nan),
-                    _to_float(r.get("error_bypass"), default=np.nan),
-                    _to_float(r.get("error_shuffle_mean"), default=np.nan),
-                ]
-                for r in rows
-            ],
-            dtype=np.float64,
-        )
-        row_labels = []
-        for r in rows:
-            sample = r.get("test_sample_idx", r.get("sample_idx", "?"))
-            mid = str(r.get("material_id", ""))
-            label = f"test_{sample}"
-            if mid and mid != "nan":
-                label += f"_{mid[:10]}"
-            row_labels.append(label)
-        if cfg.heatmap_unified_y_axis and common_fig_height is None:
-            common_fig_height = compute_unified_heatmap_height(len(row_labels), cfg)
+                _to_float(r.get("error_normal"), default=0.0),
+                _to_float(r.get("error_bypass"), default=0.0),
+                _to_float(r.get("error_shuffle_mean"), default=0.0),
+            ]
+            for r in rows
+        ],
+        dtype=np.float64,
+    )
+    row_labels = []
+    for r in rows:
+        sample = r.get("test_sample_idx", r.get("sample_idx", "?"))
+        mid = str(r.get("material_id", ""))
+        label = f"test_{sample}"
+        if mid and mid != "nan":
+            label += f"_{mid[:10]}"
+        row_labels.append(label)
 
     save_matrix_heatmap(
         matrix=matrix,
@@ -1450,9 +1275,7 @@ def save_mode_error_heatmap(
         ylabel="sample",
         dpi=cfg.heatmap_dpi,
         max_xticks=3,
-        max_yticks=max(len(row_labels), 1),
-        fig_width=8.0,
-        fig_height=common_fig_height,
+        max_yticks=cfg.heatmap_top_n_mode_error,
     )
 
 
@@ -1464,21 +1287,14 @@ def save_multi_sample_projected_heatmap(
     filename: str,
     title: str,
     value_col: str = "signed_weight",
-    canonical_samples: Optional[list[dict[str, Any]]] = None,
-    common_fig_height: Optional[float] = None,
 ) -> None:
     """Save sample × 128 projected channel attribution heatmap."""
     if not samples_root.exists():
         return
-    if canonical_samples is None:
-        canonical_samples = collect_canonical_heatmap_samples(samples_root, cfg)
-    if not canonical_samples:
-        return
-
+    sample_dirs = sorted([p for p in samples_root.iterdir() if p.is_dir()])[: cfg.heatmap_max_samples]
     rows = []
     row_labels = []
-    for item in canonical_samples:
-        sample_dir = Path(item["sample_dir"])
+    for sample_dir in sample_dirs:
         vec = load_attribution_vector_from_csv(
             sample_dir / filename,
             expected_size=128,
@@ -1486,10 +1302,12 @@ def save_multi_sample_projected_heatmap(
             id_cols=("channel", "dim"),
         )
         if vec is None:
-            vec = np.full(128, np.nan, dtype=np.float64)
+            continue
         rows.append(np.abs(vec) if cfg.heatmap_use_abs_attribution else vec)
-        row_labels.append(str(item.get("label", sample_dir.name[:36])))
+        row_labels.append(sample_dir.name[:36])
 
+    if not rows:
+        return
     matrix = np.stack(rows, axis=0)
     center_zero = not cfg.heatmap_use_abs_attribution
     save_matrix_heatmap(
@@ -1504,9 +1322,7 @@ def save_multi_sample_projected_heatmap(
         ylabel="sample",
         dpi=cfg.heatmap_dpi,
         max_xticks=32,
-        max_yticks=max(len(row_labels), 1),
-        fig_width=20.0,
-        fig_height=common_fig_height,
+        max_yticks=cfg.heatmap_max_samples,
     )
 
 
@@ -1518,35 +1334,34 @@ def save_topk_occlusion_heatmap(
     filename: str = "projected_topk_occlusion.csv",
     mask_type: str = "top_importance",
     title: str,
-    canonical_samples: Optional[list[dict[str, Any]]] = None,
-    common_fig_height: Optional[float] = None,
 ) -> None:
     """Save sample × K heatmap for Top-K or random projected-channel occlusion."""
     if not samples_root.exists():
         return
-    if canonical_samples is None:
-        canonical_samples = collect_canonical_heatmap_samples(samples_root, cfg)
-    if not canonical_samples:
-        return
-
-    k_ref = list(cfg.projected_topk_channels)
+    sample_dirs = sorted([p for p in samples_root.iterdir() if p.is_dir()])[: cfg.heatmap_max_samples]
     rows = []
     row_labels = []
-    for item in canonical_samples:
-        sample_dir = Path(item["sample_dir"])
-        csv_rows = _csv_rows(sample_dir / filename)
-        selected = [r for r in csv_rows if r.get("mask_type") == mask_type]
-        by_k = {}
-        for r in selected:
-            try:
-                k = int(_to_float(r.get("k"), default=np.nan))
-            except Exception:
-                continue
-            by_k[k] = _to_float(r.get("abs_delta_from_original"), default=np.nan)
-        values = np.array([by_k.get(k, np.nan) for k in k_ref], dtype=np.float64)
-        rows.append(values)
-        row_labels.append(str(item.get("label", sample_dir.name[:36])))
+    k_ref: Optional[list[int]] = None
 
+    for sample_dir in sample_dirs:
+        csv_rows = _csv_rows(sample_dir / filename)
+        if not csv_rows:
+            continue
+        selected = [r for r in csv_rows if r.get("mask_type") == mask_type]
+        selected = sorted(selected, key=lambda r: _to_float(r.get("k"), default=0.0))
+        if not selected:
+            continue
+        k_values = [int(_to_float(r.get("k"), default=0.0)) for r in selected]
+        values = np.array([_to_float(r.get("abs_delta_from_original"), default=0.0) for r in selected], dtype=np.float64)
+        if k_ref is None:
+            k_ref = k_values
+        elif k_ref != k_values:
+            continue
+        rows.append(values)
+        row_labels.append(sample_dir.name[:36])
+
+    if not rows or k_ref is None:
+        return
     matrix = np.stack(rows, axis=0)
     save_matrix_heatmap(
         matrix=matrix,
@@ -1560,9 +1375,7 @@ def save_topk_occlusion_heatmap(
         ylabel="sample",
         dpi=cfg.heatmap_dpi,
         max_xticks=len(k_ref),
-        max_yticks=max(len(row_labels), 1),
-        fig_width=8.5,
-        fig_height=common_fig_height,
+        max_yticks=cfg.heatmap_max_samples,
     )
 
 
@@ -1575,43 +1388,8 @@ def generate_additional_heatmaps(run_dir: Path, cfg: RuntimeConfig, logger: logg
     heatmap_dir.mkdir(parents=True, exist_ok=True)
     samples_root = run_dir / "samples"
 
-    canonical_samples = collect_canonical_heatmap_samples(samples_root, cfg)
-    if canonical_samples:
-        write_csv(
-            heatmap_dir / "heatmap_canonical_sample_axis.csv",
-            [
-                {
-                    "row_index": i,
-                    "test_sample_idx": item.get("test_sample_idx"),
-                    "original_idx": item.get("original_idx"),
-                    "material_id": item.get("material_id"),
-                    "row_label": item.get("label"),
-                    "sample_dir": str(item.get("sample_dir")),
-                }
-                for i, item in enumerate(canonical_samples)
-            ],
-        )
-    common_fig_height: Optional[float] = None
-    if cfg.heatmap_unified_y_axis:
-        n_rows_for_height = len(canonical_samples) if canonical_samples else cfg.heatmap_top_n_mode_error
-        common_fig_height = compute_unified_heatmap_height(n_rows_for_height, cfg)
-        logger.info(
-            "unified heatmap y-axis enabled | rows=%d | fig_height=%.2f inch | row_height=%.3f inch",
-            n_rows_for_height,
-            common_fig_height,
-            cfg.heatmap_row_height_inch,
-        )
+    save_mode_error_heatmap(run_dir, cfg, logger)
 
-    # 1. The mode-error heatmap is aligned to canonical sample dirs when detailed sample analysis exists.
-    save_mode_error_heatmap(
-        run_dir,
-        cfg,
-        logger,
-        canonical_samples=canonical_samples,
-        common_fig_height=common_fig_height,
-    )
-
-    # 2. All sample × channel / sample × K heatmaps use the exact same y-axis sample list.
     save_multi_sample_projected_heatmap(
         samples_root=samples_root,
         output_path=heatmap_dir / "sample_projected_128_ig_matrix_heatmap.png",
@@ -1619,8 +1397,6 @@ def generate_additional_heatmaps(run_dir: Path, cfg: RuntimeConfig, logger: logg
         filename="projected_text_channel_importance_128_integrated_gradients.csv",
         title="Sample × projected 128D text-channel IG",
         value_col="signed_weight",
-        canonical_samples=canonical_samples,
-        common_fig_height=common_fig_height,
     )
     save_multi_sample_projected_heatmap(
         samples_root=samples_root,
@@ -1629,8 +1405,6 @@ def generate_additional_heatmaps(run_dir: Path, cfg: RuntimeConfig, logger: logg
         filename="differential_projected_128_integrated_gradients.csv",
         title="Sample × differential projected 128D IG: shuffle → normal",
         value_col="signed_weight",
-        canonical_samples=canonical_samples,
-        common_fig_height=common_fig_height,
     )
 
     save_topk_occlusion_heatmap(
@@ -1639,8 +1413,6 @@ def generate_additional_heatmaps(run_dir: Path, cfg: RuntimeConfig, logger: logg
         cfg=cfg,
         mask_type="top_importance",
         title="Top-K projected-channel occlusion effect",
-        canonical_samples=canonical_samples,
-        common_fig_height=common_fig_height,
     )
     save_topk_occlusion_heatmap(
         samples_root=samples_root,
@@ -1648,12 +1420,10 @@ def generate_additional_heatmaps(run_dir: Path, cfg: RuntimeConfig, logger: logg
         cfg=cfg,
         mask_type="random_mean",
         title="Random-K projected-channel occlusion effect",
-        canonical_samples=canonical_samples,
-        common_fig_height=common_fig_height,
     )
 
     if samples_root.exists() and cfg.heatmap_single_sample_limit > 0:
-        sample_dirs = [Path(item["sample_dir"]) for item in canonical_samples[: cfg.heatmap_single_sample_limit]]
+        sample_dirs = sorted([p for p in samples_root.iterdir() if p.is_dir()])[: cfg.heatmap_single_sample_limit]
         for sample_dir in sample_dirs:
             normal_csv = sample_dir / "projected_text_channel_importance_128_integrated_gradients.csv"
             if normal_csv.exists():

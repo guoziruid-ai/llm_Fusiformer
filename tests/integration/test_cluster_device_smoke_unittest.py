@@ -4,9 +4,9 @@ import unittest
 import numpy as np
 import torch
 
-from experiments.cluster_specialists.models import (
+from scripts.experiments.cluster_specialists.models import (
     RoutedSpecialistSystem, SpecialistAdapter, TensorMLPExpert)
-from experiments.cluster_specialists.routing import FixedBoundaryRouter
+from scripts.experiments.cluster_specialists.routing import FixedBoundaryRouter
 
 
 class DeviceSmokeTests(unittest.TestCase):

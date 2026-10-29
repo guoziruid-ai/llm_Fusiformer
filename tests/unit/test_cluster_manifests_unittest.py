@@ -2,8 +2,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from experiments.cluster_specialists.config import SplitRatios
-from experiments.cluster_specialists.manifests import (
+from scripts.experiments.cluster_specialists.config import SplitRatios
+from scripts.experiments.cluster_specialists.manifests import (
     build_manifest, read_manifest, validate_manifest, write_manifests)
 
 

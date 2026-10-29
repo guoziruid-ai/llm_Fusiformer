@@ -11,9 +11,9 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from experiments.cluster_specialists.alignment import load_aligned_array
-from experiments.cluster_specialists.config import HistoricalSourceConfig, ROOT
-from experiments.cluster_specialists.historical_analysis import descriptive_analysis
+from scripts.experiments.cluster_specialists.alignment import load_aligned_array
+from scripts.experiments.cluster_specialists.config import HistoricalSourceConfig, ROOT
+from scripts.experiments.cluster_specialists.historical_analysis import descriptive_analysis
 
 
 @dataclass(frozen=True)

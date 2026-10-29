@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from experiments.cluster_specialists.manifests import (
+from scripts.experiments.cluster_specialists.manifests import (
     read_manifest, validate_manifest)
 
 ROOT = Path(__file__).resolve().parents[2]

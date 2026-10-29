@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import numpy as np
 
-from experiments.cluster_specialists.config import HistoricalSourceConfig
+from scripts.experiments.cluster_specialists.config import HistoricalSourceConfig
 from scripts.diagnostics import analyze_historical_clusters as analysis
 from scripts.diagnostics import compare_cluster_mechanisms as mechanisms
 

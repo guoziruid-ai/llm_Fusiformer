@@ -127,7 +127,7 @@ except ImportError:
 
 
 # 统一路径基准：无论从哪个工作目录启动，均以当前脚本所在目录为基准。
-base_path = Path(__file__).resolve().parents[2]
+base_path = Path(__file__).resolve().parents[3]
 BASE_PATH = base_path
 PROJECT_ROOT = BASE_PATH  # 保留旧名称，兼容已有日志与辅助代码。
 RUNS_PATH = BASE_PATH / "runs"

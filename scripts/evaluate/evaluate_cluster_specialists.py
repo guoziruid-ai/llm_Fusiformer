@@ -10,14 +10,14 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from experiments.cluster_specialists.checkpoints import load_checkpoint, manifest_fingerprint
-from experiments.cluster_specialists.config import HistoricalMultiSourceConfig, HistoricalSourceConfig
-from experiments.cluster_specialists.alignment import load_aligned_array
-from experiments.cluster_specialists.evaluation import (
+from scripts.experiments.cluster_specialists.checkpoints import load_checkpoint, manifest_fingerprint
+from scripts.experiments.cluster_specialists.config import HistoricalMultiSourceConfig, HistoricalSourceConfig
+from scripts.experiments.cluster_specialists.alignment import load_aligned_array
+from scripts.experiments.cluster_specialists.evaluation import (
     summarize_paired, write_evaluation)
-from experiments.cluster_specialists.manifests import read_manifest
-from experiments.cluster_specialists.models import TensorMLPExpert
-from experiments.cluster_specialists.routing import load_router
+from scripts.experiments.cluster_specialists.manifests import read_manifest
+from scripts.experiments.cluster_specialists.models import TensorMLPExpert
+from scripts.experiments.cluster_specialists.routing import load_router
 
 ROOT = Path(__file__).resolve().parents[2]
 

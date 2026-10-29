@@ -2,7 +2,7 @@
 
 ## 当前工程入口（2026-10-27）
 
-本仓库同时保存当前 V2.1 ModernBERT 工作流与旧 Qwen/MatSciBERT 研究程序，不能混用模型、缓存或权重。正式入口位于 `scripts/train/` 与 `scripts/evaluate/`；请用文下的 `python -m` 规范模块路径。无 dropout scratch 入口为 `scripts/train/train_fusiformer_v2_modernbert.py`；`scripts/train/train_fusiformer_v2_modernbert_independent.py` 是 dropout/LR 默认值不同的实验。验证与独立测试分别由 `scripts/evaluate/validate_fusiformer_v2_modernbert.py`、`scripts/evaluate/test_fusiformer_v2_modernbert.py` 执行。根目录的 independent、validation 和 test 三个同名转发文件已移除，旧路径不再受支持；无 dropout 根转发暂为旧健康检查保留。运行前阅读 [使用指南](docs/USER_GUIDE.md)，给每次评估使用新的输出目录。
+本仓库同时保存当前 V2.1 ModernBERT 工作流与旧 Qwen/MatSciBERT 研究程序，不能混用模型、缓存或权重。正式入口位于 `scripts/train/` 与 `scripts/evaluate/`；请用文下的 `python -m` 规范模块路径。无 dropout scratch 入口为 `scripts/train/train_fusiformer_v2_modernbert.py`；`scripts/train/train_fusiformer_v2_modernbert_independent.py` 是 dropout/LR 默认值不同的实验。验证与独立测试分别由 `scripts/evaluate/validate_fusiformer_v2_modernbert.py`、`scripts/evaluate/test_fusiformer_v2_modernbert.py` 执行。根目录的两个训练入口及 validation、test 同名转发文件已移除，旧路径不再受支持；旧 ModernBERT 健康检查转发也已移除。运行前阅读 [使用指南](docs/USER_GUIDE.md)，给每次评估使用新的输出目录。
 
 此前独立验证任务使用 A800、无 dropout epoch 46 权重完成验证/测试各 14,326 条，见 [历史远端报告](docs/REMOTE_VALIDATION_REPORT.md)。本轮工程重构在**新的** AutoDL 独立目录重新运行了完整验证和测试，指标及 28,652 行预测数值与历史基线一致，并使 `sample_id` 正确读取 `mp_id`；具体命令、退出状态和结果路径见 [本轮验收报告](docs/REFACTOR_TEST_REPORT.md)。[文件资产清单](docs/FILE_ASSET_INVENTORY.md) 和 [移动日志](docs/FILE_CLEANUP_LOG.md) 记录历史脚本去向。下文 Qwen 内容是旧工作流。
 

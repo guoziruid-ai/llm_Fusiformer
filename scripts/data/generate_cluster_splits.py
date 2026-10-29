@@ -14,10 +14,10 @@ from pathlib import Path
 
 import numpy as np
 
-from experiments.cluster_specialists.config import SplitRatios
-from experiments.cluster_specialists.manifests import (
+from scripts.experiments.cluster_specialists.config import SplitRatios
+from scripts.experiments.cluster_specialists.manifests import (
     SPLITS, assign_physical_splits, build_manifest, infer_physical_id, write_manifests)
-from experiments.cluster_specialists.routing import (
+from scripts.experiments.cluster_specialists.routing import (
     CentroidRouter, FixedBoundaryRouter, load_router)
 
 ROOT = Path(__file__).resolve().parents[2]

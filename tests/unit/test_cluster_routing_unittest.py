@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from experiments.cluster_specialists.routing import (
+from scripts.experiments.cluster_specialists.routing import (
     CentroidRouter, FixedBoundaryRouter, load_router)
 
 

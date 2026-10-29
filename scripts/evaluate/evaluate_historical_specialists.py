@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import replace
 
-from experiments.cluster_specialists.config import HistoricalSourceConfig
+from scripts.experiments.cluster_specialists.config import HistoricalSourceConfig
 from scripts.evaluate.evaluate_cluster_specialists import CFG, run
 
 HISTORICAL_SOURCE = HistoricalSourceConfig()

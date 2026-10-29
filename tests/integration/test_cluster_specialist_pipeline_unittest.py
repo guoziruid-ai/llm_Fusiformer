@@ -6,13 +6,13 @@ import numpy as np
 import torch
 from torch import nn
 
-from experiments.cluster_specialists.evaluation import (
+from scripts.experiments.cluster_specialists.evaluation import (
     summarize_paired, write_evaluation)
-from experiments.cluster_specialists.features import extract_v2_graph_latents
-from experiments.cluster_specialists.models import (
+from scripts.experiments.cluster_specialists.features import extract_v2_graph_latents
+from scripts.experiments.cluster_specialists.models import (
     RoutedSpecialistSystem, SpecialistAdapter, TensorMLPExpert)
-from experiments.cluster_specialists.routing import FixedBoundaryRouter
-from experiments.cluster_specialists.training import train_tensor_expert
+from scripts.experiments.cluster_specialists.routing import FixedBoundaryRouter
+from scripts.experiments.cluster_specialists.training import train_tensor_expert
 
 
 class ConstantExpert(nn.Module):
