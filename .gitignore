@@ -11,7 +11,8 @@ external/
 docs/
 v2_tests/
 v2_docs/
-
+# Server-only release workspace
+/Fusiformer-Release
 AGENTS.md
 
 *.md
@@ -20,3 +21,6 @@ AGENTS.md
 *.ckpt
 *.npy
 *.npz
+
+
+
